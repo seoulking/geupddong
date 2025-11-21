@@ -300,7 +300,15 @@ function SuddenPoopSimulator() {
   const containerRef = useRef(null); 
   const requestRef = useRef();
   const playerRef = useRef({ x: CENTER_X, y: CENTER_Y, vx: 0, vy: 0 });
-  const inputRef = useRef({ joyX: 0, joyY: 0, keys: {}, sprint: false, hold: false, map: false });
+  const inputRef = useRef({ 
+    joyX: 0, 
+    joyY: 0, 
+    keys: {}, 
+    sprint: false, 
+    hold: false, 
+    map: false,
+    direction: { up: false, down: false, left: false, right: false } // 방향 버튼 상태
+  });
   const gameTimeRef = useRef(0);
   const mapRevealTimerRef = useRef(0);
   const aiMessageTimerRef = useRef(0);
@@ -432,16 +440,28 @@ function SuddenPoopSimulator() {
       : 16.6; // 첫 프레임
     controlTimersRef.current.lastUpdateTime = now;
     
-    let dx = input.joyX;
-    let dy = input.joyY;
-
+    // 방향 버튼 상태로부터 이동 방향 계산
+    let dx = 0;
+    let dy = 0;
+    
+    // 방향 버튼 상태 (십자가 버튼)
+    if (input.direction.up) dy -= 1;
+    if (input.direction.down) dy += 1;
+    if (input.direction.left) dx -= 1;
+    if (input.direction.right) dx += 1;
+    
+    // 키보드 입력도 지원
     if (input.keys['KeyW'] || input.keys['w'] || input.keys['ArrowUp']) dy -= 1;
     if (input.keys['KeyS'] || input.keys['s'] || input.keys['ArrowDown']) dy += 1;
     if (input.keys['KeyA'] || input.keys['a'] || input.keys['ArrowLeft']) dx -= 1;
     if (input.keys['KeyD'] || input.keys['d'] || input.keys['ArrowRight']) dx += 1;
 
+    // 정규화 (대각선 이동 시 속도 보정)
     const len = Math.sqrt(dx*dx + dy*dy);
-    if (len > 1) { dx /= len; dy /= len; }
+    if (len > 1) { 
+      dx /= len; 
+      dy /= len; 
+    }
 
     let speed = PLAYER_SPEED;
     let urgencyMultiplier = 1.0; 
@@ -538,8 +558,14 @@ function SuddenPoopSimulator() {
       gameStatsRef.current.riskZoneCount++;
     }
 
-    player.vx = dx * speed;
-    player.vy = dy * speed;
+    // 이동 방향이 없으면 완전히 멈춤
+    if (dx === 0 && dy === 0) {
+      player.vx = 0;
+      player.vy = 0;
+    } else {
+      player.vx = dx * speed;
+      player.vy = dy * speed;
+    }
 
     const nextX = player.x + player.vx;
     const nextY = player.y + player.vy;
@@ -945,14 +971,15 @@ function SuddenPoopSimulator() {
       const containerSize = isPC ? '10rem' : '8rem';
       
       const handleDirection = (dir, isActive) => {
+        // 방향 버튼 상태를 업데이트 (버튼을 누를 때만 true)
         if (dir === 'up') {
-          inputRef.current.joyY = isActive ? -1 : 0;
+          inputRef.current.direction.up = isActive;
         } else if (dir === 'down') {
-          inputRef.current.joyY = isActive ? 1 : 0;
+          inputRef.current.direction.down = isActive;
         } else if (dir === 'left') {
-          inputRef.current.joyX = isActive ? -1 : 0;
+          inputRef.current.direction.left = isActive;
         } else if (dir === 'right') {
-          inputRef.current.joyX = isActive ? 1 : 0;
+          inputRef.current.direction.right = isActive;
         }
       };
       
@@ -1150,43 +1177,50 @@ function SuddenPoopSimulator() {
              </div>
           </div>
 
-          <div className="absolute bottom-0 left-0 right-0 w-full flex justify-between items-end z-20 pointer-events-auto pb-safe"
+          <div className="absolute bottom-0 left-0 right-0 w-full flex items-end justify-center z-20 pointer-events-auto pb-safe"
                style={{ 
                  paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 1rem)',
                  paddingLeft: 'max(env(safe-area-inset-left, 0px), 1rem)',
                  paddingRight: 'max(env(safe-area-inset-right, 0px), 1rem)',
-                 gap: isPC ? '3rem' : '1rem'
+                 gap: isPC ? '2rem' : '1rem'
                }}>
+             {/* 왼쪽: 십자가 방향키 */}
              <div className="flex-shrink-0" style={{ marginBottom: isPC ? '1.5rem' : '1rem' }}>
                <DirectionPad />
              </div>
-             <div className="flex gap-4 md:gap-6 items-end" style={{ gap: isPC ? '1.5rem' : '0.75rem' }}>
-                <div className="flex flex-col items-center" style={{ marginBottom: isPC ? '0' : '0.5rem' }}>
-                   <button className={`rounded-full border-2 flex flex-col items-center justify-center backdrop-blur-md ${inputRef.current.hold ? 'bg-green-600 ring-4 ring-green-400/30' : 'bg-green-500/20 border-green-400'}`}
-                      style={{ width: isPC ? '5rem' : '4rem', height: isPC ? '5rem' : '4rem' }}
-                      onTouchStart={()=>{inputRef.current.hold=true}} onTouchEnd={()=>{inputRef.current.hold=false}}
-                      onMouseDown={()=>{inputRef.current.hold=true}} onMouseUp={()=>{inputRef.current.hold=false}}>
-                      <Eye size={isPC ? 24 : 20} /><span className={`${isPC ? 'text-[10px]' : 'text-[9px]'} font-bold`}>HOLD</span>
-                   </button>
-                   {isPC && <span className="text-xs text-gray-500">J</span>}
-                </div>
+             
+             {/* 가운데: 홀드 버튼 (가장 크게) */}
+             <div className="flex flex-col items-center" style={{ marginBottom: isPC ? '0' : '0.5rem' }}>
+               <button className={`rounded-full border-2 flex flex-col items-center justify-center backdrop-blur-md ${inputRef.current.hold ? 'bg-green-600 ring-4 ring-green-400/30' : 'bg-green-500/20 border-green-400'}`}
+                  style={{ width: isPC ? '7rem' : '6rem', height: isPC ? '7rem' : '6rem' }}
+                  onTouchStart={()=>{inputRef.current.hold=true}} onTouchEnd={()=>{inputRef.current.hold=false}}
+                  onMouseDown={()=>{inputRef.current.hold=true}} onMouseUp={()=>{inputRef.current.hold=false}}>
+                  <Eye size={isPC ? 32 : 28} /><span className={`${isPC ? 'text-sm' : 'text-xs'} font-bold`}>HOLD</span>
+               </button>
+               {isPC && <span className="text-xs text-gray-500 mt-1">J</span>}
+             </div>
+             
+             {/* 오른쪽: RUN, MAP 버튼 */}
+             <div className="flex gap-3 items-end" style={{ gap: isPC ? '1rem' : '0.75rem' }}>
+                {/* RUN 버튼 */}
                 <div className="flex flex-col items-center" style={{ marginBottom: isPC ? '0.5rem' : '0.25rem' }}>
                    <button className={`rounded-full border-4 flex flex-col items-center justify-center ${inputRef.current.sprint ? 'bg-blue-600' : 'bg-blue-600/80'}`}
-                      style={{ width: isPC ? '6rem' : '5rem', height: isPC ? '6rem' : '5rem' }}
+                      style={{ width: isPC ? '5rem' : '4.5rem', height: isPC ? '5rem' : '4.5rem' }}
                       onTouchStart={()=>{inputRef.current.sprint=true}} onTouchEnd={()=>{inputRef.current.sprint=false}}
                       onMouseDown={()=>{inputRef.current.sprint=true}} onMouseUp={()=>{inputRef.current.sprint=false}}>
-                      <Navigation size={isPC ? 32 : 28} /><span className={`${isPC ? 'text-xs' : 'text-[10px]'} font-bold`}>RUN</span>
+                      <Navigation size={isPC ? 28 : 24} /><span className={`${isPC ? 'text-xs' : 'text-[10px]'} font-bold`}>RUN</span>
                    </button>
-                   {isPC && <span className="text-xs text-gray-500">K</span>}
+                   {isPC && <span className="text-xs text-gray-500 mt-1">K</span>}
                 </div>
-                <div className="flex flex-col items-center" style={{ marginTop: isPC ? '-1.5rem' : '-1rem' }}>
+                {/* MAP 버튼 */}
+                <div className="flex flex-col items-center" style={{ marginTop: isPC ? '-0.5rem' : '-0.5rem' }}>
                    <button className={`rounded-full border-2 flex flex-col items-center justify-center ${inputRef.current.map ? 'bg-purple-600' : 'bg-purple-500/20'}`}
-                      style={{ width: isPC ? '4rem' : '3.5rem', height: isPC ? '4rem' : '3.5rem' }}
+                      style={{ width: isPC ? '4.5rem' : '4rem', height: isPC ? '4.5rem' : '4rem' }}
                       onTouchStart={()=>{inputRef.current.map=true}} onTouchEnd={()=>{inputRef.current.map=false}}
                       onMouseDown={()=>{inputRef.current.map=true}} onMouseUp={()=>{inputRef.current.map=false}}>
-                      <Crosshair size={isPC ? 20 : 18} /><span className={`${isPC ? 'text-[9px]' : 'text-[8px]'} font-bold`}>MAP</span>
+                      <Crosshair size={isPC ? 22 : 20} /><span className={`${isPC ? 'text-xs' : 'text-[10px]'} font-bold`}>MAP</span>
                    </button>
-                   {isPC && <span className="text-xs text-gray-500">L</span>}
+                   {isPC && <span className="text-xs text-gray-500 mt-1">L</span>}
                 </div>
              </div>
           </div>
