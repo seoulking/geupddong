@@ -98,7 +98,8 @@ const TILE_SIZE = 40;
 const PLAYER_SPEED = 3;
 const SPRINT_MULTIPLIER = 1.7;
 const MAX_URGENCY = 100;
-const BASE_URGENCY_RATE = 0.18; 
+// 30초에 100%가 되도록: 초당 약 3.33% 증가 (60fps 기준 프레임당 약 0.055% = 0.0333/60*100)
+const BASE_URGENCY_RATE_PER_SECOND = 100 / 30; // 초당 3.33% 증가 
 const MAX_STAMINA = 100;
 const BASE_VISION_RADIUS = 120;
 const MAX_VISION_RADIUS = 450;  
@@ -598,8 +599,11 @@ function SuddenPoopSimulator() {
       gameStatsRef.current.speedSamples.push(currentSpeed);
     }
 
-    // 위급도 계산 (먼저 계산하여 정확한 값 확인)
-    const newUrgency = Math.max(0, stats.urgency + (BASE_URGENCY_RATE * urgencyMultiplier));
+    // 위급도 계산 (deltaTime을 초 단위로 변환하여 시간에 비례하게 증가)
+    // deltaTime은 밀리초 단위이므로 1000으로 나눠서 초 단위로 변환
+    const deltaTimeSeconds = deltaTime / 1000;
+    const urgencyIncrease = BASE_URGENCY_RATE_PER_SECOND * urgencyMultiplier * deltaTimeSeconds;
+    const newUrgency = Math.max(0, Math.min(MAX_URGENCY, stats.urgency + urgencyIncrease));
     
     // 게임 통계 업데이트
     gameStatsRef.current.maxUrgency = Math.max(gameStatsRef.current.maxUrgency, newUrgency);
@@ -1169,7 +1173,7 @@ function SuddenPoopSimulator() {
           <div className="absolute top-0 left-0 right-0 p-4 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent z-20 pointer-events-none">
              <div className="w-1/2 space-y-1">
                 <div className="flex items-center gap-2 text-red-500 font-bold"><Activity size={20}/><span>URGENCY ({stats.urgency.toFixed(0)}%)</span></div>
-                <div className="w-full h-4 bg-gray-800 rounded-full overflow-hidden"><div className="h-full transition-all duration-200" style={{width: `${stats.urgency}%`, backgroundColor: stats.urgency>80?'#ef4444':'#22c55e'}}/></div>
+                <div className="w-full h-4 bg-gray-800 rounded-full overflow-hidden"><div className="h-full transition-all duration-75" style={{width: `${Math.min(100, Math.max(0, stats.urgency))}%`, backgroundColor: stats.urgency>80?'#ef4444':stats.urgency>50?'#f59e0b':'#22c55e'}}/></div>
              </div>
              <div className="w-1/3 flex flex-col items-end">
                 <div className="flex items-center gap-1 text-yellow-400"><Zap size={16}/><span>STAMINA</span></div>
