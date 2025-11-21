@@ -147,6 +147,8 @@ function expandMap(baseTemplate, padding = 10) {
     }
   }
 
+  carveGateConnections(newMap, padding, baseHeight, baseWidth);
+
   for (let r = 1; r < newHeight - 1; r++) {
     for (let c = 1; c < newWidth - 1; c++) {
       const insideBase =
@@ -179,6 +181,51 @@ function expandMap(baseTemplate, padding = 10) {
   }
 
   return newMap;
+}
+
+function carveGateConnections(map, padding, baseHeight, baseWidth) {
+  const gateCols = [
+    padding + Math.floor(baseWidth / 2) - 2,
+    padding + Math.floor(baseWidth / 2) + 2,
+  ];
+  const gateRows = [
+    padding + Math.floor(baseHeight / 2) - 2,
+    padding + Math.floor(baseHeight / 2) + 2,
+  ];
+
+  const openCells = (cells) => {
+    cells.forEach(({ r, c }) => {
+      if (r > 0 && r < map.length && c > 0 && c < map[0].length) {
+        map[r][c] = 0;
+      }
+    });
+  };
+
+  gateCols.forEach((col) => {
+    openCells([
+      { r: padding, c: col },
+      { r: padding, c: col - 1 },
+      { r: padding, c: col + 1 },
+      { r: padding - 1, c: col },
+      { r: padding + baseHeight - 1, c: col },
+      { r: padding + baseHeight - 1, c: col - 1 },
+      { r: padding + baseHeight - 1, c: col + 1 },
+      { r: padding + baseHeight, c: col },
+    ]);
+  });
+
+  gateRows.forEach((row) => {
+    openCells([
+      { r: row, c: padding },
+      { r: row - 1, c: padding },
+      { r: row + 1, c: padding },
+      { r: row, c: padding - 1 },
+      { r: row, c: padding + baseWidth - 1 },
+      { r: row - 1, c: padding + baseWidth - 1 },
+      { r: row + 1, c: padding + baseWidth - 1 },
+      { r: row, c: padding + baseWidth },
+    ]);
+  });
 }
 
 const MAP_WIDTH_TILES = RAW_MAP_TEMPLATE[0].length;
@@ -723,7 +770,9 @@ function SuddenPoopSimulator() {
     const cy = canvas.height / 2 - player.y - TILE_SIZE/2;
 
     ctx.save();
-    ctx.translate(cx, cy);
+    const zoom = isPC ? 1 : 0.8;
+    ctx.scale(zoom, zoom);
+    ctx.translate(cx / zoom, cy / zoom);
 
     currentMapData.forEach((row, y) => {
       row.forEach((tile, x) => {
@@ -800,7 +849,7 @@ function SuddenPoopSimulator() {
         });
     }
     requestRef.current = requestAnimationFrame(drawGame);
-  }, [gameState, stats.urgency, showMap, aiMessage, currentMapData, goalPosition, goalPositions]);
+  }, [gameState, stats.urgency, showMap, aiMessage, currentMapData, goalPosition, goalPositions, isPC]);
 
   useEffect(() => {
     if (gameState === 'playing') {
