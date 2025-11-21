@@ -77,8 +77,15 @@ try {
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
+  console.log('✅ Firebase 초기화 성공:', { 
+    projectId: firebaseConfig.projectId, 
+    db: !!db, 
+    auth: !!auth 
+  });
 } catch (e) {
-  console.error('Firebase 초기화 실패:', e);
+  console.error('❌ Firebase 초기화 실패:', e);
+  db = null;
+  auth = null;
 }
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
@@ -334,15 +341,35 @@ function SuddenPoopSimulator() {
     
     // Local environment auth check
     if (auth) {
+      console.log('🔐 Firebase 인증 시작...');
       if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           // Use custom token if available (Preview Environment)
-          signInWithCustomToken(auth, __initial_auth_token).catch(console.error);
+          signInWithCustomToken(auth, __initial_auth_token)
+            .then((userCredential) => {
+              console.log('✅ 커스텀 토큰 인증 완료:', userCredential.user.uid);
+            })
+            .catch((error) => {
+              console.error('❌ 커스텀 토큰 인증 실패:', error);
+            });
       } else {
           // Fallback to anonymous (Production/Dev)
-          signInAnonymously(auth).catch(console.error);
+          signInAnonymously(auth)
+            .then((userCredential) => {
+              console.log('✅ 익명 인증 완료:', userCredential.user.uid);
+            })
+            .catch((error) => {
+              console.error('❌ 익명 인증 실패:', error);
+            });
       }
       
-      const unsubscribe = onAuthStateChanged(auth, setUser);
+      const unsubscribe = onAuthStateChanged(auth, (user) => {
+        if (user) {
+          console.log('✅ 사용자 인증 상태 변경:', user.uid);
+        } else {
+          console.warn('⚠️ 사용자 인증 상태: 로그아웃됨');
+        }
+        setUser(user);
+      });
       setIsPC(!('ontouchstart' in window));
       window.addEventListener('resize', checkOrientation);
       checkOrientation();
@@ -797,19 +824,76 @@ function SuddenPoopSimulator() {
     };
     
     // Firestore에 저장
-    if (db) {
+    console.log('🔄 게임 결과 저장 시도:', { 
+      db: !!db, 
+      user: !!user, 
+      uid: user?.uid,
+      success,
+      duration: `${(duration / 1000).toFixed(1)}초`
+    });
+    
+    if (!db) {
+      console.error('❌ Firestore DB가 초기화되지 않았습니다.');
+      alert('데이터베이스 연결 실패. 콘솔을 확인하세요.');
+      return;
+    }
+    
+    // 사용자 인증이 안 되어 있으면 익명 인증 시도
+    let currentUser = user;
+    if (!currentUser && auth) {
+      console.warn('⚠️ 사용자 인증이 완료되지 않았습니다. 익명 인증 시도 중...');
       try {
-        await addDoc(collection(db, 'game_results'), gameResult);
-        console.log('게임 결과 저장 완료:', gameResult);
-      } catch (e) { 
-        console.error('Firestore 저장 실패:', e); 
+        const userCredential = await signInAnonymously(auth);
+        currentUser = userCredential.user;
+        setUser(currentUser);
+        gameResult.uid = currentUser.uid;
+        console.log('✅ 익명 인증 완료:', currentUser.uid);
+      } catch (authError) {
+        console.error('❌ 익명 인증 실패:', authError);
+        console.error('인증 오류 상세:', {
+          code: authError.code,
+          message: authError.message
+        });
+        // 인증 실패해도 저장은 시도 (보안 규칙에서 허용)
+        gameResult.uid = 'anonymous_' + Date.now();
+      }
+    } else if (currentUser) {
+      gameResult.uid = currentUser.uid;
+    } else {
+      // 인증이 완전히 실패한 경우 고유 ID 생성
+      gameResult.uid = 'anonymous_' + Date.now();
+    }
+    
+    try {
+      console.log('📝 저장할 데이터:', gameResult);
+      const docRef = await addDoc(collection(db, 'game_results'), gameResult);
+      console.log('✅ 게임 결과 저장 완료!');
+      console.log('📄 문서 ID:', docRef.id);
+      console.log('📊 저장된 데이터 요약:', {
+        success,
+        duration: `${(duration / 1000).toFixed(1)}초`,
+        urgency: `${urgencyToSave.toFixed(1)}%`,
+        uid: gameResult.uid
+      });
+    } catch (e) {
+      console.error('❌ Firestore 저장 실패:', e);
+      console.error('에러 상세:', {
+        code: e.code,
+        message: e.message,
+        stack: e.stack
+      });
+      
+      if (e.code === 'permission-denied') {
+        console.error('⚠️ 권한 오류: Firestore 보안 규칙을 확인하세요.');
+        console.error('현재 사용자:', currentUser?.uid || 'anonymous');
+        alert('데이터 저장 권한 오류. Firestore 보안 규칙을 확인하세요.');
+      } else {
+        alert(`데이터 저장 실패: ${e.message}`);
       }
     }
     
-    // 성공한 경우 리더보드 업데이트
-    if (success) {
-      fetchLeaderboard();
-    }
+    // 게임 종료 시 리더보드 업데이트 (성공/실패 모두)
+    fetchLeaderboard();
   };
 
   // 리더보드 조회 함수
@@ -1169,8 +1253,8 @@ function SuddenPoopSimulator() {
                         </div>
                     </div>
 
-                    {/* 리더보드 (성공한 경우만) - 하단에 컴팩트하게 */}
-                    {gameState === 'success' && leaderboard.length > 0 && (
+                    {/* 리더보드 (성공/실패 모두 표시) - 하단에 컴팩트하게 */}
+                    {leaderboard.length > 0 && (
                         <div className={`${isPC ? 'mb-6' : 'mb-3'} text-left bg-gray-800 p-3 rounded w-full max-w-4xl`}>
                             <p className={`${isPC ? 'text-sm' : 'text-xs'} text-yellow-400 mb-2 font-bold flex items-center gap-1 justify-center`}>
                                 <Zap size={isPC ? 16 : 12} />리더보드 TOP {Math.min(leaderboard.length, 5)}
