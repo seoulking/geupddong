@@ -811,8 +811,26 @@ function SuddenPoopSimulator() {
   }, [gameState, updateGame, drawGame]);
 
   const toggleFullScreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(console.error);
+    if (typeof document === 'undefined') return;
+    const docEl = document.documentElement;
+    const isFull =
+      document.fullscreenElement ||
+      document.webkitFullscreenElement ||
+      document.msFullscreenElement;
+    if (isFull) return;
+    const request =
+      docEl.requestFullscreen ||
+      docEl.webkitRequestFullscreen ||
+      docEl.msRequestFullscreen;
+    if (request) {
+      try {
+        const result = request.call(docEl);
+        if (result && typeof result.catch === 'function') {
+          result.catch(err => console.warn('Fullscreen request failed:', err));
+        }
+      } catch (err) {
+        console.warn('Fullscreen request threw:', err);
+      }
     }
   };
 
@@ -1190,8 +1208,9 @@ function SuddenPoopSimulator() {
           {isPC && <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-xs text-gray-400 font-mono">WASD</div>}
         </div>
       );
+  };
 
-  const bindControlPointer = (controlKey) => ({
+  const bindControlPointer = useCallback((controlKey) => ({
     onPointerDown: (e) => {
       e.preventDefault();
       e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -1210,8 +1229,7 @@ function SuddenPoopSimulator() {
         inputRef.current[controlKey] = false;
       }
     }
-  });
-  };
+  }), []);
 
   if (orientation === 'portrait') {
     return (
