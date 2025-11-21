@@ -557,23 +557,28 @@ function SuddenPoopSimulator() {
     let dx = 0;
     let dy = 0;
     
-    // 방향 버튼 상태 (십자가 버튼)
-    if (input.direction.up) dy -= 1;
-    if (input.direction.down) dy += 1;
-    if (input.direction.left) dx -= 1;
-    if (input.direction.right) dx += 1;
-    
-    // 키보드 입력도 지원
-    if (input.keys['KeyW'] || input.keys['w'] || input.keys['ArrowUp']) dy -= 1;
-    if (input.keys['KeyS'] || input.keys['s'] || input.keys['ArrowDown']) dy += 1;
-    if (input.keys['KeyA'] || input.keys['a'] || input.keys['ArrowLeft']) dx -= 1;
-    if (input.keys['KeyD'] || input.keys['d'] || input.keys['ArrowRight']) dx += 1;
+    // 1. 가상 조이스틱 입력 (최우선)
+    if (input.joyX !== 0 || input.joyY !== 0) {
+        dx = input.joyX;
+        dy = input.joyY;
+    } else {
+        // 2. 키보드/방향키 입력 (조이스틱 없을 때만)
+        if (input.direction.up) dy -= 1;
+        if (input.direction.down) dy += 1;
+        if (input.direction.left) dx -= 1;
+        if (input.direction.right) dx += 1;
+        
+        if (input.keys['KeyW'] || input.keys['w'] || input.keys['ArrowUp']) dy -= 1;
+        if (input.keys['KeyS'] || input.keys['s'] || input.keys['ArrowDown']) dy += 1;
+        if (input.keys['KeyA'] || input.keys['a'] || input.keys['ArrowLeft']) dx -= 1;
+        if (input.keys['KeyD'] || input.keys['d'] || input.keys['ArrowRight']) dx += 1;
 
-    // 정규화 (대각선 이동 시 속도 보정)
-    const len = Math.sqrt(dx*dx + dy*dy);
-    if (len > 1) { 
-      dx /= len; 
-      dy /= len; 
+        // 정규화 (키보드 입력 시 대각선 속도 보정)
+        const len = Math.sqrt(dx*dx + dy*dy);
+        if (len > 1) { 
+          dx /= len; 
+          dy /= len; 
+        }
     }
 
     let speed = PLAYER_SPEED;
@@ -766,13 +771,21 @@ function SuddenPoopSimulator() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const player = playerRef.current;
-    const cx = canvas.width / 2 - player.x - TILE_SIZE/2;
-    const cy = canvas.height / 2 - player.y - TILE_SIZE/2;
+    
+    // 줌 레벨 결정: 맵 보기 모드일 때는 전체 맵이 보이도록 축소
+    let zoom = isPC ? 1 : 0.8;
+    if (inputRef.current.map) {
+        zoom = isPC ? 0.6 : 0.45; // 맵 모드일 때 더 넓게 보기
+    }
+    
+    // 카메라 중심 계산 (줌 적용 전의 원본 좌표 기준)
+    // 캐릭터를 화면 중심에 맞추기 위한 offset 계산
+    const cameraX = canvas.width / 2 / zoom - player.x - TILE_SIZE/2;
+    const cameraY = canvas.height / 2 / zoom - player.y - TILE_SIZE/2;
 
     ctx.save();
-    const zoom = isPC ? 1 : 0.8;
     ctx.scale(zoom, zoom);
-    ctx.translate(cx / zoom, cy / zoom);
+    ctx.translate(cameraX, cameraY);
 
     currentMapData.forEach((row, y) => {
       row.forEach((tile, x) => {
@@ -1139,122 +1152,133 @@ function SuddenPoopSimulator() {
     };
   }, []);
 
-  // 게임보이 스타일 십자가 방향키
+  // 터치 슬라이딩을 지원하는 스마트 D-Pad (아날로그 조이스틱 로직)
   const DirectionPad = () => {
       const buttonSize = isPC ? '3rem' : '2.5rem';
       const containerSize = isPC ? '10rem' : '8rem';
-      const pointerStateRef = useRef({ up: null, down: null, left: null, right: null });
+      const padRef = useRef(null);
+      const activePointerId = useRef(null);
+      const [knobPos, setKnobPos] = useState({ x: 0, y: 0 }); // 노브 위치 (시각적)
 
-      const handleDirection = (dir, isActive) => {
-        inputRef.current.direction[dir] = isActive;
+      // 좌표로부터 방향 벡터 계산 (아날로그)
+      const updateJoystick = (clientX, clientY) => {
+          if (!padRef.current) return;
+          const rect = padRef.current.getBoundingClientRect();
+          const centerX = rect.left + rect.width / 2;
+          const centerY = rect.top + rect.height / 2;
+          const maxDist = rect.width / 2; // 반지름
+          
+          let dx = clientX - centerX;
+          let dy = clientY - centerY;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          
+          // 데드존 처리 (10% 이하는 무시)
+          if (distance < maxDist * 0.1) {
+              inputRef.current.joyX = 0;
+              inputRef.current.joyY = 0;
+              setKnobPos({ x: 0, y: 0 });
+              setVisualDirection(null);
+              return;
+          }
+
+          // 입력 정규화 (-1 ~ 1)
+          // 거리가 반지름보다 크면 최대값으로 제한
+          const actualDist = Math.min(distance, maxDist);
+          const normalizedX = dx / distance; // 단위 벡터 X
+          const normalizedY = dy / distance; // 단위 벡터 Y
+          
+          // 실제 입력값 (0 ~ 1 사이의 크기 반영)
+          const inputMagnitude = Math.min(1, (distance - maxDist * 0.1) / (maxDist * 0.9));
+          
+          inputRef.current.joyX = normalizedX * inputMagnitude;
+          inputRef.current.joyY = normalizedY * inputMagnitude;
+
+          // 시각적 노브 위치 제한
+          const knobDist = Math.min(distance, maxDist * 0.6); // 노브는 패드 안에서만 이동
+          setKnobPos({ x: normalizedX * knobDist, y: normalizedY * knobDist });
+
+          // 8방향 시각적 피드백 계산
+          const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+          let dir = null;
+          if (angle > -22.5 && angle <= 22.5) dir = 'right';
+          else if (angle > 22.5 && angle <= 67.5) dir = 'down-right';
+          else if (angle > 67.5 && angle <= 112.5) dir = 'down';
+          else if (angle > 112.5 && angle <= 157.5) dir = 'down-left';
+          else if (angle > 157.5 || angle <= -157.5) dir = 'left';
+          else if (angle > -157.5 && angle <= -112.5) dir = 'up-left';
+          else if (angle > -112.5 && angle <= -67.5) dir = 'up';
+          else if (angle > -67.5 && angle <= -22.5) dir = 'up-right';
+          setVisualDirection(dir);
+      };
+      
+      const [visualDirection, setVisualDirection] = useState(null);
+
+      const handlePointerDown = (e) => {
+          e.preventDefault();
+          e.currentTarget.setPointerCapture(e.pointerId);
+          activePointerId.current = e.pointerId;
+          updateJoystick(e.clientX, e.clientY);
       };
 
-      const attachPointerHandlers = (dir) => ({
-        onPointerDown: (e) => {
+      const handlePointerMove = (e) => {
+          if (activePointerId.current !== e.pointerId) return;
           e.preventDefault();
-          pointerStateRef.current[dir] = e.pointerId;
-          e.currentTarget.setPointerCapture?.(e.pointerId);
-          handleDirection(dir, true);
-        },
-        onPointerUp: (e) => {
+          updateJoystick(e.clientX, e.clientY);
+      };
+
+      const handlePointerUp = (e) => {
+          if (activePointerId.current !== e.pointerId) return;
           e.preventDefault();
-          if (pointerStateRef.current[dir] === e.pointerId || e.pointerType === 'mouse') {
-            pointerStateRef.current[dir] = null;
-            handleDirection(dir, false);
-          }
-          e.currentTarget.releasePointerCapture?.(e.pointerId);
-        },
-        onPointerCancel: () => {
-          pointerStateRef.current[dir] = null;
-          handleDirection(dir, false);
-        },
-        onPointerLeave: (e) => {
-          if (e.pointerType === 'mouse' && e.buttons === 0) {
-            pointerStateRef.current[dir] = null;
-            handleDirection(dir, false);
-          }
-        }
-      });
-      
+          e.currentTarget.releasePointerCapture(e.pointerId);
+          activePointerId.current = null;
+          inputRef.current.joyX = 0;
+          inputRef.current.joyY = 0;
+          setKnobPos({ x: 0, y: 0 });
+          setVisualDirection(null);
+      };
+
       return (
         <div 
-          className="relative touch-none select-none"
+          ref={padRef}
+          className="relative touch-none select-none rounded-full bg-gray-800/50 backdrop-blur-sm border-2 border-gray-600"
           style={{ 
             width: containerSize,
             height: containerSize,
             touchAction: 'none',
-            WebkitTouchCallout: 'none',
-            userSelect: 'none'
           }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          onPointerLeave={isPC ? handlePointerUp : undefined}
         >
-          {/* 중앙 기준으로 십자가 배치 */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            {/* 위 버튼 */}
-            <button
-              className="absolute bg-gray-700/80 hover:bg-gray-600/80 active:bg-gray-800 border-2 border-gray-500 rounded-t-lg flex items-center justify-center transition-all"
-              style={{
-                width: buttonSize,
-                height: buttonSize,
-                top: 0,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                touchAction: 'none'
-              }}
-              {...attachPointerHandlers('up')}
-            >
-              <span className={`${isPC ? 'text-2xl' : 'text-xl'} font-bold`}>↑</span>
-            </button>
-            
-            {/* 아래 버튼 */}
-            <button
-              className="absolute bg-gray-700/80 hover:bg-gray-600/80 active:bg-gray-800 border-2 border-gray-500 rounded-b-lg flex items-center justify-center transition-all"
-              style={{
-                width: buttonSize,
-                height: buttonSize,
-                bottom: 0,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                touchAction: 'none'
-              }}
-              {...attachPointerHandlers('down')}
-            >
-              <span className={`${isPC ? 'text-2xl' : 'text-xl'} font-bold`}>↓</span>
-            </button>
-            
-            {/* 왼쪽 버튼 */}
-            <button
-              className="absolute bg-gray-700/80 hover:bg-gray-600/80 active:bg-gray-800 border-2 border-gray-500 rounded-l-lg flex items-center justify-center transition-all"
-              style={{
-                width: buttonSize,
-                height: buttonSize,
-                left: 0,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                touchAction: 'none'
-              }}
-              {...attachPointerHandlers('left')}
-            >
-              <span className={`${isPC ? 'text-2xl' : 'text-xl'} font-bold`}>←</span>
-            </button>
-            
-            {/* 오른쪽 버튼 */}
-            <button
-              className="absolute bg-gray-700/80 hover:bg-gray-600/80 active:bg-gray-800 border-2 border-gray-500 rounded-r-lg flex items-center justify-center transition-all"
-              style={{
-                width: buttonSize,
-                height: buttonSize,
-                right: 0,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                touchAction: 'none'
-              }}
-              {...attachPointerHandlers('right')}
-            >
-              <span className={`${isPC ? 'text-2xl' : 'text-xl'} font-bold`}>→</span>
-            </button>
+          {/* 가이드라인 */}
+          <div className="absolute inset-0 opacity-20 pointer-events-none">
+            <div className="absolute top-1/2 left-2 right-2 h-0.5 bg-gray-400 -translate-y-1/2"></div>
+            <div className="absolute left-1/2 top-2 bottom-2 w-0.5 bg-gray-400 -translate-x-1/2"></div>
+            <div className="absolute top-1/2 left-1/2 w-2/3 h-2/3 border border-gray-500 rounded-full -translate-x-1/2 -translate-y-1/2"></div>
           </div>
-          
-          {isPC && <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-xs text-gray-400 font-mono">WASD</div>}
+
+          {/* 방향키 시각화 (활성화 시 강조) */}
+          <span className={`absolute top-2 left-1/2 -translate-x-1/2 transition-colors ${visualDirection?.includes('up') ? 'text-blue-400 scale-110' : 'text-gray-500'}`}>↑</span>
+          <span className={`absolute bottom-2 left-1/2 -translate-x-1/2 transition-colors ${visualDirection?.includes('down') ? 'text-blue-400 scale-110' : 'text-gray-500'}`}>↓</span>
+          <span className={`absolute left-2 top-1/2 -translate-y-1/2 transition-colors ${visualDirection?.includes('left') ? 'text-blue-400 scale-110' : 'text-gray-500'}`}>←</span>
+          <span className={`absolute right-2 top-1/2 -translate-y-1/2 transition-colors ${visualDirection?.includes('right') ? 'text-blue-400 scale-110' : 'text-gray-500'}`}>→</span>
+
+          {/* 조이스틱 노브 (손가락 따라다님) */}
+          <div 
+              className={`absolute w-12 h-12 rounded-full border-2 shadow-lg backdrop-blur-sm transition-transform duration-75
+                  ${visualDirection ? 'bg-blue-500/50 border-blue-300' : 'bg-gray-600/50 border-gray-400'}`}
+              style={{
+                  top: '50%',
+                  left: '50%',
+                  marginTop: '-1.5rem',
+                  marginLeft: '-1.5rem',
+                  transform: `translate(${knobPos.x}px, ${knobPos.y}px)`
+              }}
+          />
+
+          {isPC && <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-xs text-gray-400 font-mono">WASD / Drag</div>}
         </div>
       );
   };
