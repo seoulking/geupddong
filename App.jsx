@@ -128,8 +128,8 @@ const BASE_MAP_TEMPLATE = [
   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
 ];
 
-const MAP_PADDING = 12; // 타일 확장 크기
-const RAW_MAP_TEMPLATE = expandMap(BASE_MAP_TEMPLATE, MAP_PADDING);
+// 이전 맵 크기로 복원 (30×20)
+const RAW_MAP_TEMPLATE = BASE_MAP_TEMPLATE;
 
 function expandMap(baseTemplate, padding = 10) {
   const baseHeight = baseTemplate.length;
