@@ -1189,20 +1189,19 @@ function SuddenPoopSimulator() {
                <DirectionPad />
              </div>
              
-             {/* 가운데: 달리기(RUN) 버튼 */}
-             <div className="flex flex-col items-center" style={{ marginBottom: isPC ? '0.5rem' : '0.25rem' }}>
-               <button className={`rounded-full border-4 flex flex-col items-center justify-center ${inputRef.current.sprint ? 'bg-blue-600' : 'bg-blue-600/80'}`}
-                  style={{ width: isPC ? '5rem' : '4.5rem', height: isPC ? '5rem' : '4.5rem' }}
-                  onTouchStart={()=>{inputRef.current.sprint=true}} onTouchEnd={()=>{inputRef.current.sprint=false}}
-                  onMouseDown={()=>{inputRef.current.sprint=true}} onMouseUp={()=>{inputRef.current.sprint=false}}>
-                  <Navigation size={isPC ? 28 : 24} /><span className={`${isPC ? 'text-xs' : 'text-[10px]'} font-bold`}>RUN</span>
-               </button>
-               {isPC && <span className="text-xs text-gray-500 mt-1">J</span>}
-             </div>
-             
-             {/* 오른쪽: 홀드 버튼 (가장 크게), 맵 버튼 */}
+             {/* 오른쪽: RUN, HOLD(가장 크게), MAP 버튼 그룹 */}
              <div className="flex gap-3 items-end" style={{ gap: isPC ? '1rem' : '0.75rem' }}>
-                {/* 홀드 버튼 (가장 크게) */}
+                {/* RUN 버튼 */}
+                <div className="flex flex-col items-center" style={{ marginBottom: isPC ? '0.5rem' : '0.25rem' }}>
+                  <button className={`rounded-full border-4 flex flex-col items-center justify-center ${inputRef.current.sprint ? 'bg-blue-600' : 'bg-blue-600/80'}`}
+                     style={{ width: isPC ? '5rem' : '4.5rem', height: isPC ? '5rem' : '4.5rem' }}
+                     onTouchStart={()=>{inputRef.current.sprint=true}} onTouchEnd={()=>{inputRef.current.sprint=false}}
+                     onMouseDown={()=>{inputRef.current.sprint=true}} onMouseUp={()=>{inputRef.current.sprint=false}}>
+                     <Navigation size={isPC ? 28 : 24} /><span className={`${isPC ? 'text-xs' : 'text-[10px]'} font-bold`}>RUN</span>
+                  </button>
+                  {isPC && <span className="text-xs text-gray-500 mt-1">J</span>}
+                </div>
+                {/* HOLD 버튼 (가장 크게) */}
                 <div className="flex flex-col items-center" style={{ marginBottom: isPC ? '0' : '0.5rem' }}>
                   <button className={`rounded-full border-2 flex flex-col items-center justify-center backdrop-blur-md ${inputRef.current.hold ? 'bg-green-600 ring-4 ring-green-400/30' : 'bg-green-500/20 border-green-400'}`}
                      style={{ width: isPC ? '7rem' : '6rem', height: isPC ? '7rem' : '6rem' }}
@@ -1212,7 +1211,7 @@ function SuddenPoopSimulator() {
                   </button>
                   {isPC && <span className="text-xs text-gray-500 mt-1">K</span>}
                 </div>
-                {/* 맵 버튼 */}
+                {/* MAP 버튼 */}
                 <div className="flex flex-col items-center" style={{ marginTop: isPC ? '-0.5rem' : '-0.5rem' }}>
                   <button className={`rounded-full border-2 flex flex-col items-center justify-center ${inputRef.current.map ? 'bg-purple-600' : 'bg-purple-500/20'}`}
                      style={{ width: isPC ? '4.5rem' : '4rem', height: isPC ? '4.5rem' : '4rem' }}
