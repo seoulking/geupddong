@@ -12,26 +12,52 @@ import { Shield, Zap, MapPin, Activity, RotateCcw, User, Navigation, MousePointe
  */
 
 // --- FIREBASE CONFIGURATION ---
-// 주의: 실제 배포 시 API 키는 환경 변수(.env)로 관리하는 것이 안전합니다.
-// 이 코드를 그대로 사용하려면 Firebase Console에서 값을 복사해서 채워넣으세요.
+// Firebase 설정을 다양한 방법으로 가져오기 시도
 let firebaseConfig = {};
-try {
-  firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-} catch (e) {
-  console.warn('Firebase config parsing failed:', e);
+
+// 1. 전역 변수에서 가져오기 (index.html에서 설정)
+if (typeof window !== 'undefined' && window.__FIREBASE_CONFIG__ && Object.keys(window.__FIREBASE_CONFIG__).length > 0) {
+  firebaseConfig = window.__FIREBASE_CONFIG__;
 }
 
-// Firebase 설정이 비어있을 때 기본값 제공 (개발용)
-if (!firebaseConfig.apiKey || Object.keys(firebaseConfig).length === 0) {
-  console.warn('Firebase config가 설정되지 않았습니다. Firebase 기능은 비활성화됩니다.');
+// 2. 환경 변수에서 가져오기 (Vite 환경 변수)
+if ((!firebaseConfig.apiKey || Object.keys(firebaseConfig).length === 0) && import.meta.env.VITE_FIREBASE_API_KEY) {
   firebaseConfig = {
-    apiKey: "dummy-key",
-    authDomain: "dummy.firebaseapp.com",
-    projectId: "dummy-project",
-    storageBucket: "dummy.appspot.com",
-    messagingSenderId: "123456789",
-    appId: "1:123456789:web:dummy"
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'geupddong-fc00c',
+    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+    appId: import.meta.env.VITE_FIREBASE_APP_ID
   };
+}
+
+// 3. 이전 방식의 전역 변수에서 가져오기
+if (!firebaseConfig.apiKey || Object.keys(firebaseConfig).length === 0) {
+  try {
+    const oldConfig = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
+    if (oldConfig) {
+      firebaseConfig = typeof oldConfig === 'string' ? JSON.parse(oldConfig) : oldConfig;
+    }
+  } catch (e) {
+    console.warn('Firebase config parsing failed:', e);
+  }
+}
+
+// 4. Firebase 설정이 여전히 비어있을 때 기본 설정 사용 (호스팅에서도 작동)
+if (!firebaseConfig.apiKey || Object.keys(firebaseConfig).length === 0 || firebaseConfig.apiKey === 'dummy-key') {
+  // Firebase 프로젝트 설정 (geupddong-fc00c)
+  // 주의: API 키는 클라이언트에서 노출되어도 안전하지만, Firestore 보안 규칙은 반드시 설정하세요
+  firebaseConfig = {
+    apiKey: "AIzaSyDZ1PFzJMcjzaCN6RPxC58elsfNVVIhtjU",
+    authDomain: "geupddong-fc00c.firebaseapp.com",
+    projectId: "geupddong-fc00c",
+    storageBucket: "geupddong-fc00c.firebasestorage.app",
+    messagingSenderId: "357858980688",
+    appId: "1:357858980688:web:3ebe0f383b629031e97255",
+    measurementId: "G-7L81FW0FH2"
+  };
+  console.log('✅ Firebase 설정이 적용되었습니다. 프로젝트:', firebaseConfig.projectId);
 }
 
 // 만약 로컬에서 개발하신다면 위 줄 대신 아래와 같이 직접 키를 입력하세요:
@@ -285,6 +311,20 @@ function SuddenPoopSimulator() {
     holdStart: null,
     mapStart: null,
     lastUpdateTime: null
+  });
+  const gameStatsRef = useRef({
+    maxUrgency: 0,
+    minStamina: MAX_STAMINA,
+    riskZoneCount: 0, // 위험 지역 통과 횟수
+    totalDistance: 0, // 총 이동 거리
+    lastPosition: { x: CENTER_X, y: CENTER_Y },
+    mapUses: 0, // 지도 사용 횟수
+    sprintActivations: 0, // 달리기 활성화 횟수
+    holdActivations: 0, // 참기 활성화 횟수
+    avgUrgency: 0,
+    urgencySamples: [], // 위급도 샘플 (초당 1회)
+    avgSpeed: 0,
+    speedSamples: []
   }); 
 
   useEffect(() => {
@@ -389,6 +429,7 @@ function SuddenPoopSimulator() {
       // Sprint 시작 시간 기록
       if (!controlTimersRef.current.sprintStart) {
         controlTimersRef.current.sprintStart = now;
+        gameStatsRef.current.sprintActivations++; // Sprint 활성화 횟수
       }
       
       // 실제 경과 시간 추가 (0.1초 단위로 반올림)
@@ -415,6 +456,7 @@ function SuddenPoopSimulator() {
         // Hold 시작 시간 기록
         if (!controlTimersRef.current.holdStart) {
           controlTimersRef.current.holdStart = now;
+          gameStatsRef.current.holdActivations++; // Hold 활성화 횟수
         }
         
         // 실제 경과 시간 추가 (0.1초 단위로 반올림)
@@ -440,6 +482,7 @@ function SuddenPoopSimulator() {
         // Map 시작 시간 기록
         if (!controlTimersRef.current.mapStart) {
           controlTimersRef.current.mapStart = now;
+          gameStatsRef.current.mapUses++; // Map 사용 횟수
         }
         
         // 실제 경과 시간 추가 (0.1초 단위로 반올림)
@@ -460,7 +503,13 @@ function SuddenPoopSimulator() {
     }
 
     const currentTile = checkCollision(player.x + TILE_SIZE/2, player.y + TILE_SIZE/2, currentMapData);
-    if (currentTile === 4) { speed *= 0.3; urgencyMultiplier *= 1.5; }
+    
+    // 위험 지역 통과 추적
+    if (currentTile === 4) { 
+      speed *= 0.3; 
+      urgencyMultiplier *= 1.5;
+      gameStatsRef.current.riskZoneCount++;
+    }
 
     player.vx = dx * speed;
     player.vy = dy * speed;
@@ -482,8 +531,31 @@ function SuddenPoopSimulator() {
       player.y = nextY;
     }
 
+    // 이동 거리 계산
+    const distanceMoved = Math.sqrt(
+      Math.pow(player.x - gameStatsRef.current.lastPosition.x, 2) + 
+      Math.pow(player.y - gameStatsRef.current.lastPosition.y, 2)
+    );
+    gameStatsRef.current.totalDistance += distanceMoved;
+    gameStatsRef.current.lastPosition = { x: player.x, y: player.y };
+    
+    // 속도 샘플링 (초당 1회)
+    const currentSpeed = Math.sqrt(player.vx * player.vx + player.vy * player.vy);
+    if (Math.random() < 0.06) { // 약 60fps 기준 초당 1회
+      gameStatsRef.current.speedSamples.push(currentSpeed);
+    }
+
     // 위급도 계산 (먼저 계산하여 정확한 값 확인)
     const newUrgency = Math.max(0, stats.urgency + (BASE_URGENCY_RATE * urgencyMultiplier));
+    
+    // 게임 통계 업데이트
+    gameStatsRef.current.maxUrgency = Math.max(gameStatsRef.current.maxUrgency, newUrgency);
+    gameStatsRef.current.minStamina = Math.min(gameStatsRef.current.minStamina, stats.stamina);
+    
+    // 위급도 샘플링 (초당 1회)
+    if (Math.random() < 0.06) { // 약 60fps 기준 초당 1회
+      gameStatsRef.current.urgencySamples.push(newUrgency);
+    }
     
     // 화장실 도달 체크는 먼저 (성공 조건이 우선)
     if (currentTile === 3) {
@@ -543,9 +615,7 @@ function SuddenPoopSimulator() {
         } else {
           ctx.fillStyle = '#333'; ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
         }
-        if (tile === 2) {
-            ctx.fillStyle = '#ffffff22'; ctx.font = '10px sans-serif'; ctx.fillText('S', px + 15, py + 25);
-        }
+        // Start tile (tile === 2) - 표시 없음
       });
     });
 
@@ -639,7 +709,24 @@ function SuddenPoopSimulator() {
     gameTimeRef.current = 0;
     setGameState('playing');
     setAiMessage(null);
-    visionRadiusRef.current = BASE_VISION_RADIUS; 
+    visionRadiusRef.current = BASE_VISION_RADIUS;
+    
+    // 게임 통계 초기화
+    gameStatsRef.current = {
+      maxUrgency: 0,
+      minStamina: MAX_STAMINA,
+      riskZoneCount: 0,
+      totalDistance: 0,
+      lastPosition: { x: CENTER_X, y: CENTER_Y },
+      mapUses: 0,
+      sprintActivations: 0,
+      holdActivations: 0,
+      avgUrgency: 0,
+      urgencySamples: [],
+      avgSpeed: 0,
+      speedSamples: []
+    };
+    
     if(containerRef.current) containerRef.current.focus();
   };
 
@@ -650,21 +737,63 @@ function SuddenPoopSimulator() {
     const urgencyToSave = finalUrgency !== null ? finalUrgency : stats.urgency;
     const duration = gameTimeRef.current;
     
-    // 게임 결과 데이터 준비
+    // 게임 통계 계산
+    const gameStats = gameStatsRef.current;
+    const avgUrgency = gameStats.urgencySamples.length > 0
+      ? gameStats.urgencySamples.reduce((a, b) => a + b, 0) / gameStats.urgencySamples.length
+      : urgencyToSave;
+    const avgSpeed = gameStats.speedSamples.length > 0
+      ? gameStats.speedSamples.reduce((a, b) => a + b, 0) / gameStats.speedSamples.length
+      : 0;
+    
+    // 게임 결과 데이터 준비 (최대한 상세하게)
     const gameResult = {
+      // 기본 정보
       uid: user?.uid || 'anonymous',
       success,
-      duration,
-      urgency: urgencyToSave,
-      stamina: stats.stamina,
-      controls: controlsUsed,
+      duration: Math.round(duration),
+      timestamp: serverTimestamp(),
+      date: new Date().toISOString(),
+      
+      // 게임 상태
+      urgency: Math.round(urgencyToSave * 10) / 10,
+      maxUrgency: Math.round(gameStats.maxUrgency * 10) / 10,
+      avgUrgency: Math.round(avgUrgency * 10) / 10,
+      finalStamina: Math.round(stats.stamina * 10) / 10,
+      minStamina: Math.round(gameStats.minStamina * 10) / 10,
+      
+      // 통제 사용 통계
+      controls: controlsUsed, // 사용한 통제 목록
       controlsCount: {
         physical: Math.round(controlsCountRef.current['Hold_Time'] / 100) / 10, // 0.1초 단위
         tech: Math.round(controlsCountRef.current['Map_Time'] / 100) / 10, // 0.1초 단위
         sprint: Math.round(controlsCountRef.current['Sprint_Time'] / 100) / 10 // 0.1초 단위
       },
-      timestamp: serverTimestamp(),
-      date: new Date().toISOString()
+      controlsActivations: {
+        physical: gameStats.holdActivations, // Hold 활성화 횟수
+        tech: gameStats.mapUses, // Map 사용 횟수
+        sprint: gameStats.sprintActivations // Sprint 활성화 횟수
+      },
+      
+      // 게임 플레이 통계
+      totalDistance: Math.round(gameStats.totalDistance), // 총 이동 거리 (픽셀)
+      avgSpeed: Math.round(avgSpeed * 10) / 10, // 평균 속도
+      riskZonePasses: gameStats.riskZoneCount, // 위험 지역 통과 횟수
+      finalPosition: { // 최종 위치
+        x: Math.round(playerRef.current.x),
+        y: Math.round(playerRef.current.y)
+      },
+      
+      // 맵 정보
+      numBathrooms: goalPositions.length, // 화장실 개수
+      goalPosition: { // 목표 위치
+        x: goalPosition.x,
+        y: goalPosition.y
+      },
+      
+      // 메타데이터
+      platform: isPC ? 'desktop' : 'mobile',
+      orientation: orientation
     };
     
     // Firestore에 저장
@@ -704,7 +833,7 @@ function SuddenPoopSimulator() {
         leaderboardData.push({
           id: doc.id,
           duration: data.duration || 0,
-          urgency: data.urgency || 0,
+          controlsCount: data.controlsCount || {},
           timestamp: data.timestamp?.toDate?.() || (data.date ? new Date(data.date) : new Date())
         });
       });
@@ -726,168 +855,182 @@ function SuddenPoopSimulator() {
     }
   }, [gameState, db, fetchLeaderboard]);
 
-  const Joystick = () => {
-      const stickRef = useRef(null);
-      const baseRef = useRef(null);
-      const touchIdRef = useRef(null);
-      const isActiveRef = useRef(false);
+  // 게임보이 스타일 십자가 방향키
+  const DirectionPad = () => {
+      const buttonSize = isPC ? '3rem' : '2.5rem';
+      const containerSize = isPC ? '10rem' : '8rem';
       
-      const handleTouchStart = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (!baseRef.current) return;
-        
-        const touch = e.touches[0] || e.changedTouches[0];
-        touchIdRef.current = touch.identifier;
-        isActiveRef.current = true;
-        
-        updateStickPosition(touch);
-      };
-      
-      const handleTouchMove = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (!isActiveRef.current || touchIdRef.current === null) return;
-        
-        // 터치 ID에 해당하는 터치 찾기
-        let touch = null;
-        for (let i = 0; i < e.touches.length; i++) {
-          if (e.touches[i].identifier === touchIdRef.current) {
-            touch = e.touches[i];
-            break;
-          }
-        }
-        
-        // changedTouches에서도 찾기
-        if (!touch) {
-          for (let i = 0; i < e.changedTouches.length; i++) {
-            if (e.changedTouches[i].identifier === touchIdRef.current) {
-              touch = e.changedTouches[i];
-              break;
-            }
-          }
-        }
-        
-        if (touch) {
-          updateStickPosition(touch);
+      const handleDirection = (dir, isActive) => {
+        if (dir === 'up') {
+          inputRef.current.joyY = isActive ? -1 : 0;
+        } else if (dir === 'down') {
+          inputRef.current.joyY = isActive ? 1 : 0;
+        } else if (dir === 'left') {
+          inputRef.current.joyX = isActive ? -1 : 0;
+        } else if (dir === 'right') {
+          inputRef.current.joyX = isActive ? 1 : 0;
         }
       };
-      
-      const handleTouchEnd = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        // 터치 ID 확인
-        let found = false;
-        for (let i = 0; i < e.changedTouches.length; i++) {
-          if (e.changedTouches[i].identifier === touchIdRef.current) {
-            found = true;
-            break;
-          }
-        }
-        
-        if (found || !isActiveRef.current) {
-          resetStick();
-        }
-      };
-      
-      const updateStickPosition = (touch) => {
-        if (!baseRef.current || !stickRef.current) return;
-        
-        const rect = baseRef.current.getBoundingClientRect();
-        const cx = rect.width / 2;
-        const cy = rect.height / 2;
-        
-        // 터치 위치를 조이스틱 기준으로 변환
-        let x = touch.clientX - rect.left - cx;
-        let y = touch.clientY - rect.top - cy;
-        
-        // 조이스틱 범위 제한 (화면 크기에 따라 조정)
-        const dist = Math.sqrt(x * x + y * y);
-        const baseSize = baseRef.current ? baseRef.current.offsetWidth : 112;
-        const maxDist = baseSize * 0.35; // 조이스틱 크기의 35%
-        
-        if (dist > maxDist) {
-          x = (x / dist) * maxDist;
-          y = (y / dist) * maxDist;
-        }
-        
-        // 입력 값 업데이트 (-1 ~ 1 범위)
-        inputRef.current.joyX = x / maxDist;
-        inputRef.current.joyY = y / maxDist;
-        
-        // 시각적 피드백 업데이트
-        stickRef.current.style.transform = `translate(${x}px, ${y}px)`;
-      };
-      
-      const resetStick = () => {
-        inputRef.current.joyX = 0;
-        inputRef.current.joyY = 0;
-        isActiveRef.current = false;
-        touchIdRef.current = null;
-        if (stickRef.current) {
-          stickRef.current.style.transform = `translate(0px, 0px)`;
-        }
-      };
-      
-      // 전역 터치 이벤트 처리 (조이스틱 영역 밖으로 나가도 추적)
-      useEffect(() => {
-        if (isPC) return;
-        
-        const handleGlobalTouchMove = (e) => {
-          if (isActiveRef.current && touchIdRef.current !== null) {
-            handleTouchMove(e);
-          }
-        };
-        
-        const handleGlobalTouchEnd = (e) => {
-          if (isActiveRef.current && touchIdRef.current !== null) {
-            handleTouchEnd(e);
-          }
-        };
-        
-        window.addEventListener('touchmove', handleGlobalTouchMove, { passive: false });
-        window.addEventListener('touchend', handleGlobalTouchEnd, { passive: false });
-        window.addEventListener('touchcancel', handleGlobalTouchEnd, { passive: false });
-        
-        return () => {
-          window.removeEventListener('touchmove', handleGlobalTouchMove);
-          window.removeEventListener('touchend', handleGlobalTouchEnd);
-          window.removeEventListener('touchcancel', handleGlobalTouchEnd);
-        };
-      }, [isPC]);
-      
-      const joystickSize = isPC ? 128 : window.innerWidth < 400 ? 100 : 112;
-      const stickSize = isPC ? 48 : window.innerWidth < 400 ? 40 : 44;
       
       return (
         <div 
-          ref={baseRef}
-          className="rounded-full bg-white/10 border-2 border-white/30 backdrop-blur-sm flex items-center justify-center relative touch-none select-none"
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-          onTouchCancel={handleTouchEnd}
+          className="relative touch-none select-none"
           style={{ 
-            touchAction: 'none', 
-            WebkitTouchCallout: 'none', 
-            userSelect: 'none',
-            width: `${joystickSize}px`,
-            height: `${joystickSize}px`,
-            minWidth: `${joystickSize}px`,
-            minHeight: `${joystickSize}px`
+            width: containerSize,
+            height: containerSize,
+            touchAction: 'none',
+            WebkitTouchCallout: 'none',
+            userSelect: 'none'
           }}
         >
-          <div 
-            ref={stickRef} 
-            className="rounded-full bg-blue-500/80 shadow-lg pointer-events-none transition-transform duration-75" 
-            style={{ 
-              willChange: 'transform',
-              width: `${stickSize}px`,
-              height: `${stickSize}px`
-            }}
-          />
-          {isPC && <div className="absolute -bottom-8 text-xs text-gray-400 font-mono">WASD</div>}
+          {/* 중앙 기준으로 십자가 배치 */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            {/* 위 버튼 */}
+            <button
+              className="absolute bg-gray-700/80 hover:bg-gray-600/80 active:bg-gray-800 border-2 border-gray-500 rounded-t-lg flex items-center justify-center transition-all"
+              style={{
+                width: buttonSize,
+                height: buttonSize,
+                top: 0,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                touchAction: 'none'
+              }}
+              onTouchStart={(e) => {
+                e.preventDefault();
+                handleDirection('up', true);
+              }}
+              onTouchEnd={(e) => {
+                e.preventDefault();
+                handleDirection('up', false);
+              }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                handleDirection('up', true);
+              }}
+              onMouseUp={(e) => {
+                e.preventDefault();
+                handleDirection('up', false);
+              }}
+              onMouseLeave={(e) => {
+                if (e.buttons === 1) {
+                  handleDirection('up', false);
+                }
+              }}
+            >
+              <span className={`${isPC ? 'text-2xl' : 'text-xl'} font-bold`}>↑</span>
+            </button>
+            
+            {/* 아래 버튼 */}
+            <button
+              className="absolute bg-gray-700/80 hover:bg-gray-600/80 active:bg-gray-800 border-2 border-gray-500 rounded-b-lg flex items-center justify-center transition-all"
+              style={{
+                width: buttonSize,
+                height: buttonSize,
+                bottom: 0,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                touchAction: 'none'
+              }}
+              onTouchStart={(e) => {
+                e.preventDefault();
+                handleDirection('down', true);
+              }}
+              onTouchEnd={(e) => {
+                e.preventDefault();
+                handleDirection('down', false);
+              }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                handleDirection('down', true);
+              }}
+              onMouseUp={(e) => {
+                e.preventDefault();
+                handleDirection('down', false);
+              }}
+              onMouseLeave={(e) => {
+                if (e.buttons === 1) {
+                  handleDirection('down', false);
+                }
+              }}
+            >
+              <span className={`${isPC ? 'text-2xl' : 'text-xl'} font-bold`}>↓</span>
+            </button>
+            
+            {/* 왼쪽 버튼 */}
+            <button
+              className="absolute bg-gray-700/80 hover:bg-gray-600/80 active:bg-gray-800 border-2 border-gray-500 rounded-l-lg flex items-center justify-center transition-all"
+              style={{
+                width: buttonSize,
+                height: buttonSize,
+                left: 0,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                touchAction: 'none'
+              }}
+              onTouchStart={(e) => {
+                e.preventDefault();
+                handleDirection('left', true);
+              }}
+              onTouchEnd={(e) => {
+                e.preventDefault();
+                handleDirection('left', false);
+              }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                handleDirection('left', true);
+              }}
+              onMouseUp={(e) => {
+                e.preventDefault();
+                handleDirection('left', false);
+              }}
+              onMouseLeave={(e) => {
+                if (e.buttons === 1) {
+                  handleDirection('left', false);
+                }
+              }}
+            >
+              <span className={`${isPC ? 'text-2xl' : 'text-xl'} font-bold`}>←</span>
+            </button>
+            
+            {/* 오른쪽 버튼 */}
+            <button
+              className="absolute bg-gray-700/80 hover:bg-gray-600/80 active:bg-gray-800 border-2 border-gray-500 rounded-r-lg flex items-center justify-center transition-all"
+              style={{
+                width: buttonSize,
+                height: buttonSize,
+                right: 0,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                touchAction: 'none'
+              }}
+              onTouchStart={(e) => {
+                e.preventDefault();
+                handleDirection('right', true);
+              }}
+              onTouchEnd={(e) => {
+                e.preventDefault();
+                handleDirection('right', false);
+              }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                handleDirection('right', true);
+              }}
+              onMouseUp={(e) => {
+                e.preventDefault();
+                handleDirection('right', false);
+              }}
+              onMouseLeave={(e) => {
+                if (e.buttons === 1) {
+                  handleDirection('right', false);
+                }
+              }}
+            >
+              <span className={`${isPC ? 'text-2xl' : 'text-xl'} font-bold`}>→</span>
+            </button>
+          </div>
+          
+          {isPC && <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-xs text-gray-400 font-mono">WASD</div>}
         </div>
       );
   };
@@ -931,7 +1074,7 @@ function SuddenPoopSimulator() {
                  gap: isPC ? '3rem' : '1rem'
                }}>
              <div className="flex-shrink-0" style={{ marginBottom: isPC ? '1.5rem' : '1rem' }}>
-               <Joystick />
+               <DirectionPad />
              </div>
              <div className="flex gap-4 md:gap-6 items-end" style={{ gap: isPC ? '1.5rem' : '0.75rem' }}>
                 <div className="flex flex-col items-center" style={{ marginBottom: isPC ? '0' : '0.5rem' }}>
@@ -990,54 +1133,108 @@ function SuddenPoopSimulator() {
                         {gameState==='success' ? 'CONTROL SUCCESS' : 'CONTAINMENT BREACH'}
                     </h2>
                     
-                    {/* 게임 결과 통계 */}
-                    <div className="grid grid-cols-2 gap-4 mb-6 text-left bg-gray-800 p-4 rounded">
-                        <div><p className="text-[10px] text-gray-500">TIME</p><p className="text-xl font-mono">{(gameTimeRef.current/1000).toFixed(1)}s</p></div>
-                        <div><p className="text-[10px] text-gray-500">URGENCY</p><p className="text-xl font-mono">{stats.urgency.toFixed(1)}%</p></div>
-                    </div>
+                    {/* 모바일 최적화: 가로 화면에 맞게 컴팩트하게 배치 */}
+                    <div className={`${isPC ? 'grid grid-cols-2 gap-4' : 'flex flex-col gap-3'} w-full max-w-4xl`}>
+                        {/* 게임 결과 통계 - 좌측 상단 */}
+                        <div className="bg-gray-800 p-3 rounded">
+                            <div className={`${isPC ? 'grid grid-cols-2 gap-3' : 'flex justify-between'}`}>
+                                <div className="text-center">
+                                    <p className="text-[10px] text-gray-500 mb-1">TIME</p>
+                                    <p className={`${isPC ? 'text-xl' : 'text-lg'} font-mono`}>{(gameTimeRef.current/1000).toFixed(1)}s</p>
+                                </div>
+                                <div className="text-center">
+                                    <p className="text-[10px] text-gray-500 mb-1">URGENCY</p>
+                                    <p className={`${isPC ? 'text-xl' : 'text-lg'} font-mono`}>{stats.urgency.toFixed(1)}%</p>
+                                </div>
+                            </div>
+                        </div>
 
-                    {/* 통제 사용 통계 */}
-                    <div className="mb-6 text-left bg-gray-800 p-4 rounded">
-                        <p className="text-sm text-gray-400 mb-2 font-bold">통제 사용 통계</p>
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                            <div className="flex justify-between">
-                                <span className="text-green-400">참기 (J)</span>
-                                <span className="font-mono">{(Math.round(controlsCountRef.current['Hold_Time'] / 100) / 10).toFixed(1)}초</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-purple-400">지도 (L)</span>
-                                <span className="font-mono">{(Math.round(controlsCountRef.current['Map_Time'] / 100) / 10).toFixed(1)}초</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-blue-400">달리기 (K)</span>
-                                <span className="font-mono">{(Math.round(controlsCountRef.current['Sprint_Time'] / 100) / 10).toFixed(1)}초</span>
+                        {/* 통제 사용 통계 - 우측 상단 */}
+                        <div className="bg-gray-800 p-3 rounded">
+                            <p className={`${isPC ? 'text-sm' : 'text-xs'} text-gray-400 mb-2 font-bold text-center`}>통제 사용</p>
+                            <div className={`${isPC ? 'grid grid-cols-3 gap-2' : 'flex justify-around'} text-xs`}>
+                                <div className="text-center">
+                                    <div className="text-green-400 mb-0.5">참기</div>
+                                    <div className="font-mono text-[10px]">{(Math.round(controlsCountRef.current['Hold_Time'] / 100) / 10).toFixed(1)}s</div>
+                                </div>
+                                <div className="text-center">
+                                    <div className="text-purple-400 mb-0.5">지도</div>
+                                    <div className="font-mono text-[10px]">{(Math.round(controlsCountRef.current['Map_Time'] / 100) / 10).toFixed(1)}s</div>
+                                </div>
+                                <div className="text-center">
+                                    <div className="text-blue-400 mb-0.5">달리기</div>
+                                    <div className="font-mono text-[10px]">{(Math.round(controlsCountRef.current['Sprint_Time'] / 100) / 10).toFixed(1)}s</div>
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* 리더보드 (성공한 경우만) */}
+                    {/* 리더보드 (성공한 경우만) - 하단에 컴팩트하게 */}
                     {gameState === 'success' && leaderboard.length > 0 && (
-                        <div className="mb-6 text-left bg-gray-800 p-4 rounded">
-                            <p className="text-sm text-yellow-400 mb-3 font-bold flex items-center gap-2">
-                                <Zap size={16} />리더보드 (TOP 10)
+                        <div className={`${isPC ? 'mb-6' : 'mb-3'} text-left bg-gray-800 p-3 rounded w-full max-w-4xl`}>
+                            <p className={`${isPC ? 'text-sm' : 'text-xs'} text-yellow-400 mb-2 font-bold flex items-center gap-1 justify-center`}>
+                                <Zap size={isPC ? 16 : 12} />리더보드 TOP {Math.min(leaderboard.length, 5)}
                             </p>
-                            <div className="space-y-2 max-h-64 overflow-y-auto">
-                                {leaderboard.map((entry, index) => (
-                                    <div key={entry.id} className={`flex justify-between items-center p-2 rounded ${index === 0 ? 'bg-yellow-900/30 border border-yellow-500' : 'bg-gray-700/50'}`}>
-                                        <div className="flex items-center gap-2">
-                                            <span className={`font-bold ${index === 0 ? 'text-yellow-400' : 'text-gray-400'}`}>
-                                                {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
-                                            </span>
-                                            <span className="text-sm">{(entry.duration / 1000).toFixed(1)}초</span>
+                            <div className={`${isPC ? 'space-y-2 max-h-64' : 'space-y-1 max-h-32'} overflow-y-auto`}>
+                                {leaderboard.slice(0, isPC ? 10 : 5).map((entry, index) => (
+                                    <div key={entry.id} className={`${isPC ? 'p-2' : 'p-1.5'} rounded ${index === 0 ? 'bg-yellow-900/30 border border-yellow-500' : 'bg-gray-700/50'}`}>
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <span className={`${isPC ? 'text-sm' : 'text-xs'} font-bold ${index === 0 ? 'text-yellow-400' : 'text-gray-400'}`}>
+                                                    {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
+                                                </span>
+                                                <span className={`${isPC ? 'text-sm' : 'text-xs'} font-mono`}>{(entry.duration / 1000).toFixed(1)}초</span>
+                                            </div>
+                                            {!isPC && (
+                                                <div className="flex gap-2 text-[10px] text-gray-400">
+                                                    {entry.controlsCount.physical > 0 && <span className="text-green-400">참기</span>}
+                                                    {entry.controlsCount.tech > 0 && <span className="text-purple-400">지도</span>}
+                                                    {entry.controlsCount.sprint > 0 && <span className="text-blue-400">달리기</span>}
+                                                </div>
+                                            )}
+                                            {isPC && (
+                                                <div className="flex gap-3 text-xs text-gray-400">
+                                                    {entry.controlsCount.physical > 0 && (
+                                                        <span className="text-green-400 font-mono">{entry.controlsCount.physical.toFixed(1)}s</span>
+                                                    )}
+                                                    {entry.controlsCount.tech > 0 && (
+                                                        <span className="text-purple-400 font-mono">{entry.controlsCount.tech.toFixed(1)}s</span>
+                                                    )}
+                                                    {entry.controlsCount.sprint > 0 && (
+                                                        <span className="text-blue-400 font-mono">{entry.controlsCount.sprint.toFixed(1)}s</span>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
-                                        <span className="text-xs text-gray-400">위급도 {entry.urgency.toFixed(0)}%</span>
+                                        {isPC && entry.controlsCount && (entry.controlsCount.physical > 0 || entry.controlsCount.tech > 0 || entry.controlsCount.sprint > 0) && (
+                                            <div className="text-xs text-gray-400 space-y-0.5 ml-6 mt-1">
+                                                {entry.controlsCount.physical > 0 && (
+                                                    <div className="flex justify-between">
+                                                        <span className="text-green-400">참기</span>
+                                                        <span className="font-mono">{entry.controlsCount.physical.toFixed(1)}초</span>
+                                                    </div>
+                                                )}
+                                                {entry.controlsCount.tech > 0 && (
+                                                    <div className="flex justify-between">
+                                                        <span className="text-purple-400">지도</span>
+                                                        <span className="font-mono">{entry.controlsCount.tech.toFixed(1)}초</span>
+                                                    </div>
+                                                )}
+                                                {entry.controlsCount.sprint > 0 && (
+                                                    <div className="flex justify-between">
+                                                        <span className="text-blue-400">달리기</span>
+                                                        <span className="font-mono">{entry.controlsCount.sprint.toFixed(1)}초</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>
                         </div>
                     )}
 
-                    <button onClick={startGame} className="px-8 py-3 bg-white text-black font-bold rounded hover:bg-gray-200">RETRY</button>
+                    <button onClick={startGame} className={`${isPC ? 'px-8 py-3 text-lg' : 'px-6 py-2 text-sm'} bg-white text-black font-bold rounded hover:bg-gray-200`}>RETRY</button>
                 </div>
             )}
          </div>
