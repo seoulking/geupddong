@@ -297,6 +297,10 @@ function SuddenPoopSimulator() {
   const [showMap, setShowMap] = useState(false);
   const [aiMessage, setAiMessage] = useState(null);
 
+  const urgencyPercent = Math.max(0, Math.min(100, stats.urgency));
+  const urgencyDisplay = Math.round(urgencyPercent);
+  const urgencyColor = urgencyPercent >= 80 ? '#ef4444' : urgencyPercent >= 50 ? '#f59e0b' : '#22c55e';
+
   const canvasRef = useRef(null);
   const containerRef = useRef(null); 
   const requestRef = useRef();
@@ -1172,8 +1176,10 @@ function SuddenPoopSimulator() {
         <>
           <div className="absolute top-0 left-0 right-0 p-4 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent z-20 pointer-events-none">
              <div className="w-1/2 space-y-1">
-                <div className="flex items-center gap-2 text-red-500 font-bold"><Activity size={20}/><span>URGENCY ({stats.urgency.toFixed(0)}%)</span></div>
-                <div className="w-full h-4 bg-gray-800 rounded-full overflow-hidden"><div className="h-full transition-all duration-75" style={{width: `${Math.min(100, Math.max(0, stats.urgency))}%`, backgroundColor: stats.urgency>80?'#ef4444':stats.urgency>50?'#f59e0b':'#22c55e'}}/></div>
+                <div className="flex items-center gap-2 text-red-500 font-bold"><Activity size={20}/><span>URGENCY ({urgencyDisplay}%)</span></div>
+                <div className="w-full h-4 bg-gray-800 rounded-full overflow-hidden">
+                  <div className="h-full transition-none" style={{width: `${urgencyDisplay}%`, backgroundColor: urgencyColor}}/>
+                </div>
              </div>
              <div className="w-1/3 flex flex-col items-end">
                 <div className="flex items-center gap-1 text-yellow-400"><Zap size={16}/><span>STAMINA</span></div>
