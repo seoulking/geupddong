@@ -408,16 +408,16 @@ function SuddenPoopSimulator() {
     const handleKeyDown = (e) => {
       if (e.code) inputRef.current.keys[e.code] = true;
       if (e.key) inputRef.current.keys[e.key.toLowerCase()] = true;
-      if (e.code === 'KeyK' || e.key?.toLowerCase() === 'k') inputRef.current.sprint = true;
-      if (e.code === 'KeyJ' || e.key?.toLowerCase() === 'j') inputRef.current.hold = true;
-      if (e.code === 'KeyL' || e.key?.toLowerCase() === 'l') inputRef.current.map = true;
+      if (e.code === 'KeyJ' || e.key?.toLowerCase() === 'j') inputRef.current.sprint = true; // 달리기: J
+      if (e.code === 'KeyK' || e.key?.toLowerCase() === 'k') inputRef.current.hold = true; // 홀드: K
+      if (e.code === 'KeyL' || e.key?.toLowerCase() === 'l') inputRef.current.map = true; // 맵: L
     };
     const handleKeyUp = (e) => {
       if (e.code) inputRef.current.keys[e.code] = false;
       if (e.key) inputRef.current.keys[e.key.toLowerCase()] = false;
-      if (e.code === 'KeyK' || e.key?.toLowerCase() === 'k') inputRef.current.sprint = false;
-      if (e.code === 'KeyJ' || e.key?.toLowerCase() === 'j') inputRef.current.hold = false;
-      if (e.code === 'KeyL' || e.key?.toLowerCase() === 'l') inputRef.current.map = false;
+      if (e.code === 'KeyJ' || e.key?.toLowerCase() === 'j') inputRef.current.sprint = false; // 달리기: J
+      if (e.code === 'KeyK' || e.key?.toLowerCase() === 'k') inputRef.current.hold = false; // 홀드: K
+      if (e.code === 'KeyL' || e.key?.toLowerCase() === 'l') inputRef.current.map = false; // 맵: L
     };
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -1177,7 +1177,7 @@ function SuddenPoopSimulator() {
              </div>
           </div>
 
-          <div className="absolute bottom-0 left-0 right-0 w-full flex items-end justify-center z-20 pointer-events-auto pb-safe"
+          <div className="absolute bottom-0 left-0 right-0 w-full flex items-end justify-between z-20 pointer-events-auto pb-safe"
                style={{ 
                  paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 1rem)',
                  paddingLeft: 'max(env(safe-area-inset-left, 0px), 1rem)',
@@ -1189,38 +1189,38 @@ function SuddenPoopSimulator() {
                <DirectionPad />
              </div>
              
-             {/* 가운데: 홀드 버튼 (가장 크게) */}
-             <div className="flex flex-col items-center" style={{ marginBottom: isPC ? '0' : '0.5rem' }}>
-               <button className={`rounded-full border-2 flex flex-col items-center justify-center backdrop-blur-md ${inputRef.current.hold ? 'bg-green-600 ring-4 ring-green-400/30' : 'bg-green-500/20 border-green-400'}`}
-                  style={{ width: isPC ? '7rem' : '6rem', height: isPC ? '7rem' : '6rem' }}
-                  onTouchStart={()=>{inputRef.current.hold=true}} onTouchEnd={()=>{inputRef.current.hold=false}}
-                  onMouseDown={()=>{inputRef.current.hold=true}} onMouseUp={()=>{inputRef.current.hold=false}}>
-                  <Eye size={isPC ? 32 : 28} /><span className={`${isPC ? 'text-sm' : 'text-xs'} font-bold`}>HOLD</span>
+             {/* 가운데: 달리기(RUN) 버튼 */}
+             <div className="flex flex-col items-center" style={{ marginBottom: isPC ? '0.5rem' : '0.25rem' }}>
+               <button className={`rounded-full border-4 flex flex-col items-center justify-center ${inputRef.current.sprint ? 'bg-blue-600' : 'bg-blue-600/80'}`}
+                  style={{ width: isPC ? '5rem' : '4.5rem', height: isPC ? '5rem' : '4.5rem' }}
+                  onTouchStart={()=>{inputRef.current.sprint=true}} onTouchEnd={()=>{inputRef.current.sprint=false}}
+                  onMouseDown={()=>{inputRef.current.sprint=true}} onMouseUp={()=>{inputRef.current.sprint=false}}>
+                  <Navigation size={isPC ? 28 : 24} /><span className={`${isPC ? 'text-xs' : 'text-[10px]'} font-bold`}>RUN</span>
                </button>
                {isPC && <span className="text-xs text-gray-500 mt-1">J</span>}
              </div>
              
-             {/* 오른쪽: RUN, MAP 버튼 */}
+             {/* 오른쪽: 홀드 버튼 (가장 크게), 맵 버튼 */}
              <div className="flex gap-3 items-end" style={{ gap: isPC ? '1rem' : '0.75rem' }}>
-                {/* RUN 버튼 */}
-                <div className="flex flex-col items-center" style={{ marginBottom: isPC ? '0.5rem' : '0.25rem' }}>
-                   <button className={`rounded-full border-4 flex flex-col items-center justify-center ${inputRef.current.sprint ? 'bg-blue-600' : 'bg-blue-600/80'}`}
-                      style={{ width: isPC ? '5rem' : '4.5rem', height: isPC ? '5rem' : '4.5rem' }}
-                      onTouchStart={()=>{inputRef.current.sprint=true}} onTouchEnd={()=>{inputRef.current.sprint=false}}
-                      onMouseDown={()=>{inputRef.current.sprint=true}} onMouseUp={()=>{inputRef.current.sprint=false}}>
-                      <Navigation size={isPC ? 28 : 24} /><span className={`${isPC ? 'text-xs' : 'text-[10px]'} font-bold`}>RUN</span>
-                   </button>
-                   {isPC && <span className="text-xs text-gray-500 mt-1">K</span>}
+                {/* 홀드 버튼 (가장 크게) */}
+                <div className="flex flex-col items-center" style={{ marginBottom: isPC ? '0' : '0.5rem' }}>
+                  <button className={`rounded-full border-2 flex flex-col items-center justify-center backdrop-blur-md ${inputRef.current.hold ? 'bg-green-600 ring-4 ring-green-400/30' : 'bg-green-500/20 border-green-400'}`}
+                     style={{ width: isPC ? '7rem' : '6rem', height: isPC ? '7rem' : '6rem' }}
+                     onTouchStart={()=>{inputRef.current.hold=true}} onTouchEnd={()=>{inputRef.current.hold=false}}
+                     onMouseDown={()=>{inputRef.current.hold=true}} onMouseUp={()=>{inputRef.current.hold=false}}>
+                     <Eye size={isPC ? 32 : 28} /><span className={`${isPC ? 'text-sm' : 'text-xs'} font-bold`}>HOLD</span>
+                  </button>
+                  {isPC && <span className="text-xs text-gray-500 mt-1">K</span>}
                 </div>
-                {/* MAP 버튼 */}
+                {/* 맵 버튼 */}
                 <div className="flex flex-col items-center" style={{ marginTop: isPC ? '-0.5rem' : '-0.5rem' }}>
-                   <button className={`rounded-full border-2 flex flex-col items-center justify-center ${inputRef.current.map ? 'bg-purple-600' : 'bg-purple-500/20'}`}
-                      style={{ width: isPC ? '4.5rem' : '4rem', height: isPC ? '4.5rem' : '4rem' }}
-                      onTouchStart={()=>{inputRef.current.map=true}} onTouchEnd={()=>{inputRef.current.map=false}}
-                      onMouseDown={()=>{inputRef.current.map=true}} onMouseUp={()=>{inputRef.current.map=false}}>
-                      <Crosshair size={isPC ? 22 : 20} /><span className={`${isPC ? 'text-xs' : 'text-[10px]'} font-bold`}>MAP</span>
-                   </button>
-                   {isPC && <span className="text-xs text-gray-500 mt-1">L</span>}
+                  <button className={`rounded-full border-2 flex flex-col items-center justify-center ${inputRef.current.map ? 'bg-purple-600' : 'bg-purple-500/20'}`}
+                     style={{ width: isPC ? '4.5rem' : '4rem', height: isPC ? '4.5rem' : '4rem' }}
+                     onTouchStart={()=>{inputRef.current.map=true}} onTouchEnd={()=>{inputRef.current.map=false}}
+                     onMouseDown={()=>{inputRef.current.map=true}} onMouseUp={()=>{inputRef.current.map=false}}>
+                     <Crosshair size={isPC ? 22 : 20} /><span className={`${isPC ? 'text-xs' : 'text-[10px]'} font-bold`}>MAP</span>
+                  </button>
+                  {isPC && <span className="text-xs text-gray-500 mt-1">L</span>}
                 </div>
              </div>
           </div>
@@ -1234,8 +1234,8 @@ function SuddenPoopSimulator() {
             {gameState === 'intro' ? (
                 <div className="bg-gray-900 border border-gray-800 p-6 rounded-xl max-w-md w-full space-y-4">
                     <div className="space-y-2 text-xs bg-black/40 p-3 rounded text-gray-300">
-                        <div className="flex justify-between"><span className="text-green-400 font-bold">HOLD (J)</span> <span>필수. 위급도 억제 & 시야 확보</span></div>
-                        <div className="flex justify-between"><span className="text-blue-400 font-bold">RUN (K)</span> <span>달리기 - 속도 증가, 위급도 증가</span></div>
+                        <div className="flex justify-between"><span className="text-blue-400 font-bold">RUN (J)</span> <span>달리기 - 속도 증가, 위급도 증가</span></div>
+                        <div className="flex justify-between"><span className="text-green-400 font-bold">HOLD (K)</span> <span>필수. 위급도 억제 & 시야 확보</span></div>
                         <div className="flex justify-between"><span className="text-purple-400 font-bold">MAP (L)</span> <span>어둠 속 화장실 탐지.</span></div>
                     </div>
                     <button onClick={startGame} className="w-full py-4 bg-red-700 hover:bg-red-600 font-bold text-lg rounded flex items-center justify-center gap-2">
