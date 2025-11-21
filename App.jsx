@@ -98,8 +98,8 @@ const TILE_SIZE = 40;
 const PLAYER_SPEED = 3;
 const SPRINT_MULTIPLIER = 1.7;
 const MAX_URGENCY = 100;
-// 30초에 100%가 되도록: 초당 약 3.33% 증가 (60fps 기준 프레임당 약 0.055% = 0.0333/60*100)
-const BASE_URGENCY_RATE_PER_SECOND = 100 / 30; // 초당 3.33% 증가 
+// 20초에 100%가 되도록: 초당 5% 증가
+const BASE_URGENCY_RATE_PER_SECOND = 100 / 20; // 초당 5% 증가 
 const MAX_STAMINA = 100;
 const BASE_VISION_RADIUS = 120;
 const MAX_VISION_RADIUS = 450;  
