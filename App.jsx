@@ -471,9 +471,12 @@ function SuddenPoopSimulator() {
     let speed = PLAYER_SPEED;
     let urgencyMultiplier = 1.0; 
     let targetVision = BASE_VISION_RADIUS; 
+    const isInputMoving = dx !== 0 || dy !== 0;
+    const isSprinting = input.sprint && stats.stamina > 0;
+    const isHolding = input.hold && stats.stamina > 5;
 
     // Sprint 시간 측정 (실제 시간)
-    if (input.sprint && stats.stamina > 0) {
+    if (isSprinting) {
       speed *= SPRINT_MULTIPLIER;
       setStats(prev => ({ ...prev, stamina: Math.max(0, prev.stamina - 0.8) })); 
       urgencyMultiplier = 2.5;
@@ -499,9 +502,9 @@ function SuddenPoopSimulator() {
     }
 
     // Hold 시간 측정 (실제 시간)
-    if (input.hold && stats.stamina > 5) {
+    if (isHolding && !isSprinting) {
         speed *= 0.2; 
-        urgencyMultiplier = -0.5; 
+        urgencyMultiplier = 0.4; // 정지 + Hold: 가장 느림
         targetVision = MAX_VISION_RADIUS; 
         setStats(prev => ({ ...prev, stamina: prev.stamina - 0.4 })); 
         
@@ -564,12 +567,20 @@ function SuddenPoopSimulator() {
     }
 
     // 이동 방향이 없으면 완전히 멈춤
-    if (dx === 0 && dy === 0) {
+    if (!isInputMoving) {
       player.vx = 0;
       player.vy = 0;
     } else {
       player.vx = dx * speed;
       player.vy = dy * speed;
+      // 움직임 단계별 위급도 증가 조정 (Hold > Idle > Hold+Move > Move > Sprint)
+      if (!isSprinting) {
+        if (isHolding) {
+          urgencyMultiplier = Math.max(urgencyMultiplier, 1.3); // 움직이며 Hold
+        } else {
+          urgencyMultiplier = Math.max(urgencyMultiplier, 1.6); // 일반 이동
+        }
+      }
     }
 
     const nextX = player.x + player.vx;
