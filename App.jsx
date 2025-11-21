@@ -105,7 +105,7 @@ const BASE_VISION_RADIUS = 120;
 const MAX_VISION_RADIUS = 450;  
 
 // Map Types: 0:Road, 1:Wall, 2:Start, 3:Goal, 4:Risk, 5:Door
-const RAW_MAP_TEMPLATE = [
+const BASE_MAP_TEMPLATE = [
   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
   [1, 0, 0, 0, 1, 0, 0, 0, 4, 4, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 1, 0, 0, 0, 0, 1],
   [1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1],
@@ -127,6 +127,59 @@ const RAW_MAP_TEMPLATE = [
   [1, 0, 0, 1, 1, 1, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 1, 1, 1, 0, 0, 0, 1],
   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
 ];
+
+const MAP_PADDING = 12; // 타일 확장 크기
+const RAW_MAP_TEMPLATE = expandMap(BASE_MAP_TEMPLATE, MAP_PADDING);
+
+function expandMap(baseTemplate, padding = 10) {
+  const baseHeight = baseTemplate.length;
+  const baseWidth = baseTemplate[0].length;
+  const newHeight = baseHeight + padding * 2;
+  const newWidth = baseWidth + padding * 2;
+
+  const newMap = Array.from({ length: newHeight }, (_, r) =>
+    Array.from({ length: newWidth }, (_, c) => (r === 0 || c === 0 || r === newHeight - 1 || c === newWidth - 1 ? 1 : 0))
+  );
+
+  for (let r = 0; r < baseHeight; r++) {
+    for (let c = 0; c < baseWidth; c++) {
+      newMap[r + padding][c + padding] = baseTemplate[r][c];
+    }
+  }
+
+  for (let r = 1; r < newHeight - 1; r++) {
+    for (let c = 1; c < newWidth - 1; c++) {
+      const insideBase =
+        r >= padding && r < padding + baseHeight && c >= padding && c < padding + baseWidth;
+      if (insideBase || newMap[r][c] !== 0) continue;
+
+      const rand = Math.random();
+      if (rand < 0.06) {
+        newMap[r][c] = 1;
+      } else if (rand < 0.09) {
+        newMap[r][c] = 4;
+      }
+    }
+  }
+
+  const corridorSpacing = 6;
+  for (let r = padding; r < newHeight - padding; r += corridorSpacing) {
+    for (let c = 1; c < newWidth - 1; c++) {
+      if (![1, 2, 3, 5].includes(newMap[r][c])) {
+        newMap[r][c] = 0;
+      }
+    }
+  }
+  for (let c = padding; c < newWidth - padding; c += corridorSpacing) {
+    for (let r = 1; r < newHeight - 1; r++) {
+      if (![1, 2, 3, 5].includes(newMap[r][c])) {
+        newMap[r][c] = 0;
+      }
+    }
+  }
+
+  return newMap;
+}
 
 const MAP_WIDTH_TILES = RAW_MAP_TEMPLATE[0].length;
 const MAP_HEIGHT_TILES = RAW_MAP_TEMPLATE.length;
@@ -201,7 +254,11 @@ const generateLevel = () => {
     // 중앙 영역 제외 (중앙에서 너무 가까운 곳 제외)
     const centerR = Math.floor(MAP_HEIGHT_TILES / 2);
     const centerC = Math.floor(MAP_WIDTH_TILES / 2);
-    const excludeRadius = 6; // 중앙에서 6타일 반경 제외
+    const distanceScale = Math.min(MAP_HEIGHT_TILES, MAP_WIDTH_TILES);
+    const excludeRadius = Math.max(10, Math.floor(distanceScale / 4)); // 중앙 광장 넓히기
+    const edgeMargin = Math.max(4, Math.floor(distanceScale / 8)); // 가장자리 여유
+    const minStartDistance = Math.max(12, Math.floor(distanceScale / 3)); // 시작 지점과 최소 거리
+    const minGoalSpacing = Math.max(12, Math.floor(distanceScale / 5)); // 화장실 간 거리
     
     // 목표 위치 후보 (가장자리 위주, 중앙 부근 제외)
     const allCandidates = [];
@@ -213,10 +270,13 @@ const generateLevel = () => {
         const distFromCenter = Math.sqrt(Math.pow(r - centerR, 2) + Math.pow(c - centerC, 2));
         if (distFromCenter < excludeRadius) continue;
         
-        // 가장자리 3줄 이내 또는 모서리
-        const isEdge = r <= 3 || r >= MAP_HEIGHT_TILES - 4 || c <= 3 || c >= MAP_WIDTH_TILES - 4;
+        const distFromStart = Math.sqrt(Math.pow(r - startPos.r, 2) + Math.pow(c - startPos.c, 2));
+        if (distFromStart < minStartDistance) continue;
+
+        // 가장자리 영역에 가까울수록 우선
+        const isEdge = r <= edgeMargin || r >= MAP_HEIGHT_TILES - edgeMargin - 1 || c <= edgeMargin || c >= MAP_WIDTH_TILES - edgeMargin - 1;
         
-        if (isEdge && newMap[r] && newMap[r][c] !== 1) {
+        if (isEdge && newMap[r] && newMap[r][c] === 0) {
           // 시작 위치가 아닌 곳만
           if (r !== startPos.r || c !== startPos.c) {
             allCandidates.push({r, c});
@@ -225,8 +285,8 @@ const generateLevel = () => {
       }
     }
     
-    // 화장실 개수 결정 (2~4개)
-    const numBathrooms = 2 + Math.floor(Math.random() * 3); // 2, 3, 또는 4개
+    // 화장실 개수 결정 (3~5개)
+    const numBathrooms = 3 + Math.floor(Math.random() * 3); // 3, 4, 또는 5개
     const selectedCandidates = [];
     const shuffled = [...allCandidates].sort(() => Math.random() - 0.5);
     
@@ -239,7 +299,7 @@ const generateLevel = () => {
           Math.pow(candidate.r - selected.r, 2) + 
           Math.pow(candidate.c - selected.c, 2)
         );
-        return dist < 8; // 최소 8타일 거리
+        return dist < minGoalSpacing; // 최소 거리 확보
       });
       
       if (!tooClose) {
@@ -289,6 +349,7 @@ function SuddenPoopSimulator() {
   const [stats, setStats] = useState({ urgency: 0, stamina: MAX_STAMINA });
   const [controlsUsed, setControlsUsed] = useState({});
   const [leaderboard, setLeaderboard] = useState([]);
+  const [currentGameDuration, setCurrentGameDuration] = useState(null); // 현재 게임 기록 (성공했을 때만)
   const [currentMapData, setCurrentMapData] = useState(RAW_MAP_TEMPLATE);
   const [goalPosition, setGoalPosition] = useState({x:0, y:0});
   const [goalPositions, setGoalPositions] = useState([]); // 모든 화장실 위치
@@ -779,6 +840,7 @@ function SuddenPoopSimulator() {
       lastUpdateTime: null
     };
     gameTimeRef.current = 0;
+    setCurrentGameDuration(null); // 새 게임 시작 시 초기화
     setGameState('playing');
     setAiMessage(null);
     visionRadiusRef.current = BASE_VISION_RADIUS;
@@ -808,6 +870,13 @@ function SuddenPoopSimulator() {
     // endGame 호출 시 최신 위급도 값을 사용
     const urgencyToSave = finalUrgency !== null ? finalUrgency : stats.urgency;
     const duration = gameTimeRef.current;
+    
+    // 성공했을 때만 현재 게임 기록 저장 (리더보드 하이라이트용)
+    if (success) {
+      setCurrentGameDuration(Math.round(duration));
+    } else {
+      setCurrentGameDuration(null);
+    }
     
     // 게임 통계 계산
     const gameStats = gameStatsRef.current;
@@ -1314,14 +1383,39 @@ function SuddenPoopSimulator() {
                                 <Zap size={isPC ? 16 : 12} />리더보드 TOP {Math.min(leaderboard.length, 5)}
                             </p>
                             <div className={`${isPC ? 'space-y-2 max-h-64' : 'space-y-1 max-h-32'} overflow-y-auto`}>
-                                {leaderboard.slice(0, isPC ? 10 : 5).map((entry, index) => (
-                                    <div key={entry.id} className={`${isPC ? 'p-2' : 'p-1.5'} rounded ${index === 0 ? 'bg-yellow-900/30 border border-yellow-500' : 'bg-gray-700/50'}`}>
+                                {leaderboard.slice(0, isPC ? 10 : 5).map((entry, index) => {
+                                    // 현재 게임 기록인지 확인 (duration이 같으면)
+                                    const isCurrentGame = currentGameDuration !== null && entry.duration === currentGameDuration;
+                                    return (
+                                    <div key={entry.id} className={`${isPC ? 'p-2' : 'p-1.5'} rounded ${
+                                        isCurrentGame 
+                                          ? 'bg-blue-900/50 border-2 border-blue-400 ring-2 ring-blue-500' 
+                                          : index === 0 
+                                            ? 'bg-yellow-900/30 border border-yellow-500' 
+                                            : 'bg-gray-700/50'
+                                    }`}>
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
-                                                <span className={`${isPC ? 'text-sm' : 'text-xs'} font-bold ${index === 0 ? 'text-yellow-400' : 'text-gray-400'}`}>
-                                                    {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
+                                                <span className={`${isPC ? 'text-sm' : 'text-xs'} font-bold ${
+                                                    isCurrentGame 
+                                                      ? 'text-blue-400' 
+                                                      : index === 0 
+                                                        ? 'text-yellow-400' 
+                                                        : 'text-gray-400'
+                                                }`}>
+                                                    {isCurrentGame 
+                                                      ? '⭐' 
+                                                      : index === 0 
+                                                        ? '🥇' 
+                                                        : index === 1 
+                                                          ? '🥈' 
+                                                          : index === 2 
+                                                            ? '🥉' 
+                                                            : `#${index + 1}`}
                                                 </span>
-                                                <span className={`${isPC ? 'text-sm' : 'text-xs'} font-mono`}>{(entry.duration / 1000).toFixed(1)}초</span>
+                                                <span className={`${isPC ? 'text-sm' : 'text-xs'} font-mono ${
+                                                    isCurrentGame ? 'text-blue-300 font-bold' : ''
+                                                }`}>{(entry.duration / 1000).toFixed(1)}초</span>
                                             </div>
                                             {!isPC && (
                                                 <div className="flex gap-2 text-[10px] text-gray-400">
@@ -1365,10 +1459,11 @@ function SuddenPoopSimulator() {
                                                     </div>
                                                 )}
                                             </div>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
+                                         )}
+                                     </div>
+                                    );
+                                })}
+                             </div>
                         </div>
                     )}
 
