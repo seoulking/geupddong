@@ -1053,23 +1053,61 @@ function SuddenPoopSimulator() {
     }
   }, [gameState, db, fetchLeaderboard]);
 
+  // 전역 포인터 해제 시 방향키 초기화
+  useEffect(() => {
+    const resetDirections = () => {
+      const dir = inputRef.current.direction;
+      if (dir.up || dir.down || dir.left || dir.right) {
+        inputRef.current.direction = { up: false, down: false, left: false, right: false };
+      }
+    };
+    const handleVisibility = () => {
+      if (document.hidden) resetDirections();
+    };
+    window.addEventListener('blur', resetDirections);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('blur', resetDirections);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
+
   // 게임보이 스타일 십자가 방향키
   const DirectionPad = () => {
       const buttonSize = isPC ? '3rem' : '2.5rem';
       const containerSize = isPC ? '10rem' : '8rem';
-      
+      const pointerStateRef = useRef({ up: null, down: null, left: null, right: null });
+
       const handleDirection = (dir, isActive) => {
-        // 방향 버튼 상태를 업데이트 (버튼을 누를 때만 true)
-        if (dir === 'up') {
-          inputRef.current.direction.up = isActive;
-        } else if (dir === 'down') {
-          inputRef.current.direction.down = isActive;
-        } else if (dir === 'left') {
-          inputRef.current.direction.left = isActive;
-        } else if (dir === 'right') {
-          inputRef.current.direction.right = isActive;
-        }
+        inputRef.current.direction[dir] = isActive;
       };
+
+      const attachPointerHandlers = (dir) => ({
+        onPointerDown: (e) => {
+          e.preventDefault();
+          pointerStateRef.current[dir] = e.pointerId;
+          e.currentTarget.setPointerCapture?.(e.pointerId);
+          handleDirection(dir, true);
+        },
+        onPointerUp: (e) => {
+          e.preventDefault();
+          if (pointerStateRef.current[dir] === e.pointerId || e.pointerType === 'mouse') {
+            pointerStateRef.current[dir] = null;
+            handleDirection(dir, false);
+          }
+          e.currentTarget.releasePointerCapture?.(e.pointerId);
+        },
+        onPointerCancel: () => {
+          pointerStateRef.current[dir] = null;
+          handleDirection(dir, false);
+        },
+        onPointerLeave: (e) => {
+          if (e.pointerType === 'mouse' && e.buttons === 0) {
+            pointerStateRef.current[dir] = null;
+            handleDirection(dir, false);
+          }
+        }
+      });
       
       return (
         <div 
@@ -1095,27 +1133,7 @@ function SuddenPoopSimulator() {
                 transform: 'translateX(-50%)',
                 touchAction: 'none'
               }}
-              onTouchStart={(e) => {
-                e.preventDefault();
-                handleDirection('up', true);
-              }}
-              onTouchEnd={(e) => {
-                e.preventDefault();
-                handleDirection('up', false);
-              }}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                handleDirection('up', true);
-              }}
-              onMouseUp={(e) => {
-                e.preventDefault();
-                handleDirection('up', false);
-              }}
-              onMouseLeave={(e) => {
-                if (e.buttons === 1) {
-                  handleDirection('up', false);
-                }
-              }}
+              {...attachPointerHandlers('up')}
             >
               <span className={`${isPC ? 'text-2xl' : 'text-xl'} font-bold`}>↑</span>
             </button>
@@ -1131,27 +1149,7 @@ function SuddenPoopSimulator() {
                 transform: 'translateX(-50%)',
                 touchAction: 'none'
               }}
-              onTouchStart={(e) => {
-                e.preventDefault();
-                handleDirection('down', true);
-              }}
-              onTouchEnd={(e) => {
-                e.preventDefault();
-                handleDirection('down', false);
-              }}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                handleDirection('down', true);
-              }}
-              onMouseUp={(e) => {
-                e.preventDefault();
-                handleDirection('down', false);
-              }}
-              onMouseLeave={(e) => {
-                if (e.buttons === 1) {
-                  handleDirection('down', false);
-                }
-              }}
+              {...attachPointerHandlers('down')}
             >
               <span className={`${isPC ? 'text-2xl' : 'text-xl'} font-bold`}>↓</span>
             </button>
@@ -1167,27 +1165,7 @@ function SuddenPoopSimulator() {
                 transform: 'translateY(-50%)',
                 touchAction: 'none'
               }}
-              onTouchStart={(e) => {
-                e.preventDefault();
-                handleDirection('left', true);
-              }}
-              onTouchEnd={(e) => {
-                e.preventDefault();
-                handleDirection('left', false);
-              }}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                handleDirection('left', true);
-              }}
-              onMouseUp={(e) => {
-                e.preventDefault();
-                handleDirection('left', false);
-              }}
-              onMouseLeave={(e) => {
-                if (e.buttons === 1) {
-                  handleDirection('left', false);
-                }
-              }}
+              {...attachPointerHandlers('left')}
             >
               <span className={`${isPC ? 'text-2xl' : 'text-xl'} font-bold`}>←</span>
             </button>
@@ -1203,27 +1181,7 @@ function SuddenPoopSimulator() {
                 transform: 'translateY(-50%)',
                 touchAction: 'none'
               }}
-              onTouchStart={(e) => {
-                e.preventDefault();
-                handleDirection('right', true);
-              }}
-              onTouchEnd={(e) => {
-                e.preventDefault();
-                handleDirection('right', false);
-              }}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                handleDirection('right', true);
-              }}
-              onMouseUp={(e) => {
-                e.preventDefault();
-                handleDirection('right', false);
-              }}
-              onMouseLeave={(e) => {
-                if (e.buttons === 1) {
-                  handleDirection('right', false);
-                }
-              }}
+              {...attachPointerHandlers('right')}
             >
               <span className={`${isPC ? 'text-2xl' : 'text-xl'} font-bold`}>→</span>
             </button>
@@ -1232,6 +1190,27 @@ function SuddenPoopSimulator() {
           {isPC && <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-xs text-gray-400 font-mono">WASD</div>}
         </div>
       );
+
+  const bindControlPointer = (controlKey) => ({
+    onPointerDown: (e) => {
+      e.preventDefault();
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+      inputRef.current[controlKey] = true;
+    },
+    onPointerUp: (e) => {
+      e.preventDefault();
+      inputRef.current[controlKey] = false;
+      e.currentTarget.releasePointerCapture?.(e.pointerId);
+    },
+    onPointerCancel: () => {
+      inputRef.current[controlKey] = false;
+    },
+    onPointerLeave: (e) => {
+      if (e.pointerType === 'mouse' && e.buttons === 0) {
+        inputRef.current[controlKey] = false;
+      }
+    }
+  });
   };
 
   if (orientation === 'portrait') {
@@ -1282,11 +1261,10 @@ function SuddenPoopSimulator() {
              {/* 오른쪽: RUN, HOLD(가장 크게), MAP 버튼 그룹 */}
              <div className="flex gap-3 items-end" style={{ gap: isPC ? '1rem' : '0.75rem' }}>
                 {/* RUN 버튼 */}
-                <div className="flex flex-col items-center" style={{ marginBottom: isPC ? '0.5rem' : '0.25rem' }}>
+                 <div className="flex flex-col items-center" style={{ marginBottom: isPC ? '0.5rem' : '0.25rem' }}>
                   <button className={`rounded-full border-4 flex flex-col items-center justify-center ${inputRef.current.sprint ? 'bg-blue-600' : 'bg-blue-600/80'}`}
-                     style={{ width: isPC ? '5rem' : '4.5rem', height: isPC ? '5rem' : '4.5rem' }}
-                     onTouchStart={()=>{inputRef.current.sprint=true}} onTouchEnd={()=>{inputRef.current.sprint=false}}
-                     onMouseDown={()=>{inputRef.current.sprint=true}} onMouseUp={()=>{inputRef.current.sprint=false}}>
+                     style={{ width: isPC ? '5rem' : '4.5rem', height: isPC ? '5rem' : '4.5rem', touchAction: 'none' }}
+                     {...bindControlPointer('sprint')}>
                      <Navigation size={isPC ? 28 : 24} /><span className={`${isPC ? 'text-xs' : 'text-[10px]'} font-bold`}>RUN</span>
                   </button>
                   {isPC && <span className="text-xs text-gray-500 mt-1">J</span>}
@@ -1294,9 +1272,8 @@ function SuddenPoopSimulator() {
                 {/* HOLD 버튼 (가장 크게) */}
                 <div className="flex flex-col items-center" style={{ marginBottom: isPC ? '0' : '0.5rem' }}>
                   <button className={`rounded-full border-2 flex flex-col items-center justify-center backdrop-blur-md ${inputRef.current.hold ? 'bg-green-600 ring-4 ring-green-400/30' : 'bg-green-500/20 border-green-400'}`}
-                     style={{ width: isPC ? '7rem' : '6rem', height: isPC ? '7rem' : '6rem' }}
-                     onTouchStart={()=>{inputRef.current.hold=true}} onTouchEnd={()=>{inputRef.current.hold=false}}
-                     onMouseDown={()=>{inputRef.current.hold=true}} onMouseUp={()=>{inputRef.current.hold=false}}>
+                     style={{ width: isPC ? '7rem' : '6rem', height: isPC ? '7rem' : '6rem', touchAction: 'none' }}
+                     {...bindControlPointer('hold')}>
                      <Eye size={isPC ? 32 : 28} /><span className={`${isPC ? 'text-sm' : 'text-xs'} font-bold`}>HOLD</span>
                   </button>
                   {isPC && <span className="text-xs text-gray-500 mt-1">K</span>}
@@ -1304,9 +1281,8 @@ function SuddenPoopSimulator() {
                 {/* MAP 버튼 */}
                 <div className="flex flex-col items-center" style={{ marginTop: isPC ? '-0.5rem' : '-0.5rem' }}>
                   <button className={`rounded-full border-2 flex flex-col items-center justify-center ${inputRef.current.map ? 'bg-purple-600' : 'bg-purple-500/20'}`}
-                     style={{ width: isPC ? '4.5rem' : '4rem', height: isPC ? '4.5rem' : '4rem' }}
-                     onTouchStart={()=>{inputRef.current.map=true}} onTouchEnd={()=>{inputRef.current.map=false}}
-                     onMouseDown={()=>{inputRef.current.map=true}} onMouseUp={()=>{inputRef.current.map=false}}>
+                     style={{ width: isPC ? '4.5rem' : '4rem', height: isPC ? '4.5rem' : '4rem', touchAction: 'none' }}
+                     {...bindControlPointer('map')}>
                      <Crosshair size={isPC ? 22 : 20} /><span className={`${isPC ? 'text-xs' : 'text-[10px]'} font-bold`}>MAP</span>
                   </button>
                   {isPC && <span className="text-xs text-gray-500 mt-1">L</span>}
