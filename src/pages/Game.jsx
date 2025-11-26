@@ -255,6 +255,8 @@ function Game() {
     if (input.map) {
         setShowMap(true);
         speed = 0; 
+        // 맵 버튼을 누르면 HOLD 효과처럼 시야 확대
+        targetVision = MAX_VISION_RADIUS;
         
         if (!controlTimersRef.current.mapStart) {
           controlTimersRef.current.mapStart = now;
@@ -365,9 +367,9 @@ function Game() {
 
     const player = playerRef.current;
     
-    let zoom = isPC ? 1 : 0.8;
+    let zoom = isPC ? 1 : 0.5; // 모바일 기본 줌: 50%
     if (inputRef.current.map) {
-        zoom = isPC ? 0.6 : 0.45; 
+        zoom = isPC ? 0.6 : 0.3; // 모바일 맵 모드 줌: 30% 
     }
     
     const cameraX = canvas.width / 2 / zoom - player.x - TILE_SIZE/2;
@@ -385,8 +387,9 @@ function Game() {
           ctx.fillStyle = '#444'; ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
           ctx.fillStyle = '#222'; ctx.fillRect(px, py + TILE_SIZE - 8, TILE_SIZE, 8);
         } else if (tile === 3) {
+          // 맵 모드일 때는 항상 화장실 표시, 아니면 거리 기반
           const dist = Math.sqrt(Math.pow(player.x - px, 2) + Math.pow(player.y - py, 2));
-          if (dist < 120) {
+          if (showMap || dist < 120) {
               ctx.fillStyle = '#4ade80'; ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
               ctx.fillStyle = '#fff'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('WC', px + 20, py + 25);
           } else {
@@ -433,22 +436,6 @@ function Game() {
     ctx.fillStyle = gradient; ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.beginPath(); ctx.rect(0, 0, canvas.width, canvas.height); ctx.arc(centerX, centerY, visionR, 0, Math.PI * 2, true); ctx.fillStyle = 'black'; ctx.fill();
 
-    if (showMap && goalPositions && goalPositions.length > 0) {
-        goalPositions.forEach((goalPos, index) => {
-            const goalScreenX = centerX + (goalPos.x - player.x);
-            const goalScreenY = centerY + (goalPos.y - player.y);
-            ctx.save();
-            ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 3;
-            ctx.beginPath(); ctx.arc(goalScreenX + TILE_SIZE/2, goalScreenY + TILE_SIZE/2, 30, 0, Math.PI * 2); ctx.stroke();
-            const pulse = (Date.now() % 1000) / 1000;
-            ctx.beginPath(); ctx.arc(goalScreenX + TILE_SIZE/2, goalScreenY + TILE_SIZE/2, 30 + pulse * 20, 0, Math.PI * 2);
-            ctx.strokeStyle = `rgba(239, 68, 68, ${1 - pulse})`; ctx.stroke();
-            const label = goalPositions.length > 1 ? `WC #${index + 1}` : 'TARGET (WC)';
-            ctx.fillStyle = '#ef4444'; ctx.font = 'bold 14px font-mono'; ctx.textAlign = 'center'; 
-            ctx.fillText(label, goalScreenX + TILE_SIZE/2, goalScreenY - 10);
-            ctx.restore();
-        });
-    }
     requestRef.current = requestAnimationFrame(drawGame);
   }, [gameState, stats.urgency, showMap, aiMessage, currentMapData, goalPosition, goalPositions, isPC]);
 
@@ -722,16 +709,15 @@ function Game() {
                  gap: isPC ? '2rem' : '1rem'
                }}>
              
-             {/* 좌측: Dynamic Joystick Zone (화면 왼쪽 절반을 덮는 투명한 영역) */}
-             {/* 모바일에서 조작감을 위해 왼쪽 40% 영역을 조이스틱 전용 공간으로 할당 */}
-             <div className="absolute left-0 bottom-0 w-[40%] h-[60%] z-50" style={{ touchAction: 'none' }}>
-               <DirectionPad inputRef={inputRef} isPC={isPC} />
-             </div>
+             {/* Dynamic Joystick Zone: 오른쪽 버튼 영역을 제외한 전체 화면 */}
+             <DirectionPad inputRef={inputRef} isPC={isPC} buttonAreaRef={null} />
              
              {/* 우측: RUN, HOLD(가장 크게), MAP 버튼 그룹 (오른쪽 끝 정렬) */}
-             <div className="flex-1 flex justify-end gap-3 items-end" style={{ gap: isPC ? '1rem' : '0.75rem' }}>
+             <div className="flex-1 flex justify-end gap-3 items-end z-50" style={{ gap: isPC ? '1rem' : '0.75rem' }}>
                  <div className="flex flex-col items-center" style={{ marginBottom: isPC ? '0.5rem' : '0.25rem' }}>
-                  <button className={`rounded-full border-4 flex flex-col items-center justify-center ${inputRef.current.sprint ? 'bg-blue-600' : 'bg-blue-600/80'}`}
+                  <button 
+                    data-control-button
+                    className={`rounded-full border-4 flex flex-col items-center justify-center ${inputRef.current.sprint ? 'bg-blue-600' : 'bg-blue-600/80'}`}
                      style={{ width: isPC ? '5rem' : '4.5rem', height: isPC ? '5rem' : '4.5rem', touchAction: 'none' }}
                      {...bindControlPointer('sprint')}>
                      <Navigation size={isPC ? 28 : 24} /><span className={`${isPC ? 'text-xs' : 'text-[10px]'} font-bold`}>RUN</span>
@@ -739,7 +725,9 @@ function Game() {
                   {isPC && <span className="text-xs text-gray-500 mt-1">J</span>}
                 </div>
                 <div className="flex flex-col items-center" style={{ marginBottom: isPC ? '0' : '0.5rem' }}>
-                  <button className={`rounded-full border-2 flex flex-col items-center justify-center backdrop-blur-md ${inputRef.current.hold ? 'bg-green-600 ring-4 ring-green-400/30' : 'bg-green-500/20 border-green-400'}`}
+                  <button 
+                    data-control-button
+                    className={`rounded-full border-2 flex flex-col items-center justify-center backdrop-blur-md ${inputRef.current.hold ? 'bg-green-600 ring-4 ring-green-400/30' : 'bg-green-500/20 border-green-400'}`}
                      style={{ width: isPC ? '7rem' : '6rem', height: isPC ? '7rem' : '6rem', touchAction: 'none' }}
                      {...bindControlPointer('hold')}>
                      <Eye size={isPC ? 32 : 28} /><span className={`${isPC ? 'text-sm' : 'text-xs'} font-bold`}>HOLD</span>
@@ -747,7 +735,9 @@ function Game() {
                   {isPC && <span className="text-xs text-gray-500 mt-1">K</span>}
                 </div>
                 <div className="flex flex-col items-center" style={{ marginTop: isPC ? '-0.5rem' : '-0.5rem' }}>
-                  <button className={`rounded-full border-2 flex flex-col items-center justify-center ${inputRef.current.map ? 'bg-purple-600' : 'bg-purple-500/20'}`}
+                  <button 
+                    data-control-button
+                    className={`rounded-full border-2 flex flex-col items-center justify-center ${inputRef.current.map ? 'bg-purple-600' : 'bg-purple-500/20'}`}
                      style={{ width: isPC ? '4.5rem' : '4rem', height: isPC ? '4.5rem' : '4rem', touchAction: 'none' }}
                      {...bindControlPointer('map')}>
                      <Crosshair size={isPC ? 22 : 20} /><span className={`${isPC ? 'text-xs' : 'text-[10px]'} font-bold`}>MAP</span>

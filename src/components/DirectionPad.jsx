@@ -1,82 +1,140 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import nipplejs from 'nipplejs';
 
-const DirectionPad = ({ inputRef, isPC }) => {
+const DirectionPad = ({ inputRef, isPC, buttonAreaRef }) => {
   const managerRef = useRef(null);
   const zoneRef = useRef(null);
+  const [buttonArea, setButtonArea] = useState(null);
+
+  // 오른쪽 버튼 영역 감지 (게임이 시작된 후에만)
+  useEffect(() => {
+    const updateButtonArea = () => {
+      // 약간의 지연을 두어 DOM이 완전히 렌더링된 후 감지
+      setTimeout(() => {
+        const buttons = document.querySelectorAll('[data-control-button]');
+        if (buttons.length > 0) {
+          let minLeft = Infinity;
+          let maxRight = -Infinity;
+          let minTop = Infinity;
+          let maxBottom = -Infinity;
+          
+          buttons.forEach(button => {
+            const rect = button.getBoundingClientRect();
+            minLeft = Math.min(minLeft, rect.left);
+            maxRight = Math.max(maxRight, rect.right);
+            minTop = Math.min(minTop, rect.top);
+            maxBottom = Math.max(maxBottom, rect.bottom);
+          });
+          
+          // 여유 공간 추가 (버튼 주변 20px)
+          setButtonArea({
+            left: minLeft - 20,
+            right: maxRight + 20,
+            top: minTop - 20,
+            bottom: maxBottom + 20
+          });
+        }
+      }, 100);
+    };
+    
+    updateButtonArea();
+    const interval = setInterval(updateButtonArea, 1000); // 1초마다 업데이트
+    window.addEventListener('resize', updateButtonArea);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('resize', updateButtonArea);
+    };
+  }, []);
 
   useEffect(() => {
-    if (!zoneRef.current) return;
-
-    // PC가 아닐 때(모바일/태블릿)만 조이스틱 활성화
-    // 또는 PC에서도 테스트를 위해 활성화할 수 있음
-    const options = {
-      zone: zoneRef.current,
-      mode: 'dynamic', // 터치한 곳에 조이스틱 생성 (Unity 스타일)
-      position: { left: '50%', top: '50%' },
-      color: 'white',
-      size: 100,
-      restOpacity: 0.1, // 평소엔 거의 안 보임
-      threshold: 0.1, // 데드존
-      multitouch: true
-    };
-
-    // 기존 매니저가 있다면 제거
-    if (managerRef.current) {
-      managerRef.current.destroy();
+    if (!zoneRef.current) {
+      console.warn('Zone ref is null');
+      return;
     }
 
-    // nipple.js 인스턴스 생성
-    const manager = nipplejs.create(options);
-    managerRef.current = manager;
+    // 약간의 지연을 두어 DOM이 완전히 렌더링된 후 초기화
+    const initTimeout = setTimeout(() => {
+      if (!zoneRef.current) return;
 
-    // 이벤트 바인딩
-    manager.on('move', (evt, data) => {
-      if (inputRef.current && data.vector) {
-        // nipple.js는 vector.x, vector.y를 제공 (단위 벡터 아님, 거리 포함될 수 있음)
-        // 하지만 data.vector는 정규화된 값이 아닐 수 있으므로 force를 고려해야 함
-        // data.angle.radian, data.force 등을 사용 가능
-        
-        // 가장 확실한 건 data.vector (정규화된 방향) * data.force (크기)
-        // data.instance.frontPosition 등으로 직접 계산도 가능하지만,
-        // data.vector가 {x, y} 단위 벡터를 줍니다.
-        
-        // data.force는 기본 0~2 정도의 값. 1.0으로 클램핑
-        const force = Math.min(data.force, 1.0);
-        
-        inputRef.current.joyX = data.vector.x * force;
-        inputRef.current.joyY = -data.vector.y * force; // Y축 반전 주의 (nipple.js는 위가 양수일 수 있음, 확인 필요)
-        // nipple.js: up is +y in screen coords? No, usually screen y is down.
-        // nipple.js 'up' angle gives vector y positive.
-        // Canvas coordinates: y increases downwards. 
-        // So 'up' on joystick should decrease y in game.
-        // If nipple.js vector.y is positive for up, we need to invert it for canvas (up is negative).
-        // Let's verify: data.vector is {x, y} unit vector. Angle 90deg (up) -> x=0, y=1.
-        // We want dy = -1. So joyY = -vector.y
-      }
-    });
+      const options = {
+        zone: zoneRef.current,
+        mode: 'dynamic', // 터치한 곳에 조이스틱 생성 (Unity 스타일)
+        position: { left: '50%', top: '50%' },
+        color: 'white',
+        size: 120,
+        restOpacity: 0.2, // 조금 더 보이게
+        threshold: 0.1, // 데드존
+        multitouch: true,
+        catchDistance: 150 // 조이스틱이 손가락을 따라오는 거리
+      };
 
-    manager.on('end', () => {
-      if (inputRef.current) {
-        inputRef.current.joyX = 0;
-        inputRef.current.joyY = 0;
+      // 기존 매니저가 있다면 제거
+      if (managerRef.current) {
+        try {
+          managerRef.current.destroy();
+        } catch (e) {
+          console.warn('Error destroying manager:', e);
+        }
       }
-    });
+
+      try {
+        // nipple.js 인스턴스 생성
+        const manager = nipplejs.create(options);
+        managerRef.current = manager;
+        
+        // 디버깅: 조이스틱 생성 확인
+        console.log('✅ Joystick manager created:', manager);
+        console.log('Zone element:', zoneRef.current);
+        
+        // 이벤트 바인딩
+        manager.on('start', (evt, data) => {
+          console.log('🎮 Joystick started', { evt, data });
+        });
+
+        manager.on('move', (evt, data) => {
+          if (inputRef.current && data && data.vector) {
+            const force = Math.min(data.force || 1.0, 1.0);
+            inputRef.current.joyX = data.vector.x * force;
+            inputRef.current.joyY = -data.vector.y * force;
+          }
+        });
+
+        manager.on('end', () => {
+          console.log('🎮 Joystick ended');
+          if (inputRef.current) {
+            inputRef.current.joyX = 0;
+            inputRef.current.joyY = 0;
+          }
+        });
+      } catch (e) {
+        console.error('❌ Error creating joystick:', e);
+      }
+    }, 200);
 
     return () => {
+      clearTimeout(initTimeout);
       if (managerRef.current) {
-        managerRef.current.destroy();
+        try {
+          managerRef.current.destroy();
+        } catch (e) {
+          console.warn('Error destroying manager on cleanup:', e);
+        }
       }
     };
-  }, [inputRef]);
+  }, [inputRef, buttonArea]);
 
   return (
     <div 
       ref={zoneRef}
-      className="absolute inset-0 z-10 touch-none"
+      className="absolute inset-0"
       style={{ 
-        // 개발 모드나 PC에서는 영역을 시각적으로 보여줄 수도 있음 (디버깅용)
-        // backgroundColor: 'rgba(255, 0, 0, 0.1)' 
+        zIndex: 15, // 버튼(z-50)보다 낮지만 충분히 높게
+        touchAction: 'none',
+        pointerEvents: 'auto',
+        // 오른쪽 버튼 영역 제외 (버튼이 오른쪽에 있으므로)
+        ...(buttonArea && typeof window !== 'undefined' ? {
+          clipPath: `inset(0 ${window.innerWidth - buttonArea.left + 30}px 0 0)`
+        } : {})
       }}
     >
       {/* PC 사용자를 위한 안내 문구 (모바일에서는 터치하면 사라지거나 가려짐) */}

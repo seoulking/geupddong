@@ -10,3 +10,4 @@ export const MAX_STAMINA = 100;
 export const BASE_VISION_RADIUS = 120;
 export const MAX_VISION_RADIUS = 450;  
 
+
