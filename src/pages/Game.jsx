@@ -631,19 +631,22 @@ function Game() {
   }, [gameState, fetchLeaderboard]);
 
   useEffect(() => {
-    const resetDirections = () => {
-      const dir = inputRef.current.direction;
-      if (dir.up || dir.down || dir.left || dir.right) {
-        inputRef.current.direction = { up: false, down: false, left: false, right: false };
-      }
+    const resetAllInputs = () => {
+      const input = inputRef.current;
+      input.direction = { up: false, down: false, left: false, right: false };
+      input.joyX = 0;
+      input.joyY = 0;
+      input.sprint = false;
+      input.hold = false;
+      input.map = false;
     };
     const handleVisibility = () => {
-      if (document.hidden) resetDirections();
+      if (document.hidden) resetAllInputs();
     };
-    window.addEventListener('blur', resetDirections);
+    window.addEventListener('blur', resetAllInputs);
     document.addEventListener('visibilitychange', handleVisibility);
     return () => {
-      window.removeEventListener('blur', resetDirections);
+      window.removeEventListener('blur', resetAllInputs);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, []);
@@ -702,19 +705,17 @@ function Game() {
              </div>
           </div>
 
-          <div className="absolute bottom-0 left-0 right-0 w-full flex items-end justify-between z-20 pointer-events-auto pb-safe"
+          {/* 조이스틱: 모바일에서만 표시 */}
+          {!isPC && <DirectionPad inputRef={inputRef} isPC={isPC} />}
+          
+          {/* 우측 버튼 영역 */}
+          <div className="absolute bottom-0 right-0 flex items-end z-50 pointer-events-auto pb-safe"
                style={{ 
                  paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 1rem)',
-                 paddingLeft: 'max(env(safe-area-inset-left, 0px), 1rem)',
                  paddingRight: 'max(env(safe-area-inset-right, 0px), 1rem)',
-                 gap: isPC ? '2rem' : '1rem'
+                 gap: isPC ? '1rem' : '0.75rem'
                }}>
-             
-             {/* 조이스틱: 화면 왼쪽 60% 영역 (버튼 제외) */}
-             <DirectionPad inputRef={inputRef} isPC={isPC} />
-             
-             {/* 우측: RUN, HOLD(가장 크게), MAP 버튼 그룹 (오른쪽 끝 정렬) */}
-             <div className="flex justify-end gap-3 items-end z-50" style={{ gap: isPC ? '1rem' : '0.75rem', marginLeft: 'auto' }}>
+             <div className="flex justify-end gap-3 items-end" style={{ gap: isPC ? '1rem' : '0.75rem' }}>
                  <div className="flex flex-col items-center" style={{ marginBottom: isPC ? '0.5rem' : '0.25rem' }}>
                   <button 
                     data-control-button

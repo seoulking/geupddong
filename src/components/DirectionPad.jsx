@@ -24,7 +24,9 @@ const DirectionPad = ({ inputRef, isPC }) => {
 
     manager.on('move', (evt, data) => {
       if (inputRef.current && data.vector) {
-        const force = Math.min(data.force, 1.0);
+        // force를 0.3~1.0 사이로 정규화 (너무 약한 입력 무시)
+        const force = Math.min(Math.max(data.force, 0.3), 1.0);
+        // 방향만 추출하고 force 적용
         inputRef.current.joyX = data.vector.x * force;
         inputRef.current.joyY = -data.vector.y * force; // Y축 반전 유지
       }
@@ -56,12 +58,11 @@ const DirectionPad = ({ inputRef, isPC }) => {
         position: 'absolute',
         top: 0,
         left: 0,
-        width: '60%',
+        width: '50%',  // 화면 왼쪽 50%만 (버튼과 겹치지 않게)
         height: '100%',
         touchAction: 'none',
         zIndex: 10,
-        // 배경을 살짝 추가해서 영역 확인 가능하게
-        // backgroundColor: 'rgba(255,255,255,0.05)'
+        pointerEvents: 'auto'
       }}
     />
   );
