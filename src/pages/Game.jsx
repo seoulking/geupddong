@@ -683,9 +683,9 @@ function Game() {
   }
 
   return (
-    <div ref={containerRef} className="fixed bg-gray-900 select-none overflow-hidden touch-none font-sans text-white outline-none" 
+    <div ref={containerRef} className="fixed bg-gray-900 select-none overflow-hidden font-sans text-white outline-none" 
          style={{ width: '100vw', height: '100dvh', top: 0, left: 0 }} tabIndex={0}>
-      <canvas ref={canvasRef} width={window.innerWidth} height={window.innerHeight} className="block w-full h-full" />
+      <canvas ref={canvasRef} width={window.innerWidth} height={window.innerHeight} className="block w-full h-full" style={{ touchAction: 'none' }} />
       
       {gameState === 'playing' && (
         <>
@@ -710,13 +710,11 @@ function Game() {
                  gap: isPC ? '2rem' : '1rem'
                }}>
              
-             {/* 좌측: 조이스틱 */}
-             <div className="flex-shrink-0" style={{ marginBottom: isPC ? '0.5rem' : '0' }}>
-               <DirectionPad inputRef={inputRef} isPC={isPC} />
-             </div>
+             {/* 조이스틱: 화면 왼쪽 60% 영역 (버튼 제외) */}
+             <DirectionPad inputRef={inputRef} isPC={isPC} />
              
              {/* 우측: RUN, HOLD(가장 크게), MAP 버튼 그룹 (오른쪽 끝 정렬) */}
-             <div className="flex justify-end gap-3 items-end" style={{ gap: isPC ? '1rem' : '0.75rem' }}>
+             <div className="flex justify-end gap-3 items-end z-50" style={{ gap: isPC ? '1rem' : '0.75rem', marginLeft: 'auto' }}>
                  <div className="flex flex-col items-center" style={{ marginBottom: isPC ? '0.5rem' : '0.25rem' }}>
                   <button 
                     data-control-button

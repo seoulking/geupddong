@@ -8,13 +8,14 @@ const DirectionPad = ({ inputRef, isPC }) => {
   useEffect(() => {
     if (!zoneRef.current) return;
 
-    // nipple.js 생성
+    // nipple.js 생성 - dynamic 모드 (터치한 곳에 조이스틱 생성)
     const manager = nipplejs.create({
       zone: zoneRef.current,
-      mode: 'static',
+      mode: 'dynamic',
       position: { left: '50%', top: '50%' },
       color: 'white',
-      size: isPC ? 150 : 120
+      size: 120,
+      catchDistance: 150
     });
 
     managerRef.current = manager;
@@ -40,18 +41,19 @@ const DirectionPad = ({ inputRef, isPC }) => {
         managerRef.current = null;
       }
     };
-  }, [inputRef, isPC]);
-
-  const size = isPC ? '10rem' : '8rem';
+  }, [inputRef]);
 
   return (
     <div 
       ref={zoneRef}
-      className="rounded-full bg-gray-800/50 border-2 border-gray-600"
       style={{ 
-        width: size,
-        height: size,
-        touchAction: 'none'
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '60%',  // 화면 왼쪽 60%
+        height: '100%',
+        touchAction: 'none',
+        zIndex: 10
       }}
     />
   );
