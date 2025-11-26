@@ -52,14 +52,22 @@ const DirectionPad = ({ inputRef, isPC }) => {
     };
   }, [inputRef]);
 
+  const size = isPC ? '10rem' : '7rem';
+
   return (
     <div 
       ref={zoneRef}
       style={{ 
-        width: isPC ? '10rem' : '7rem',
-        height: isPC ? '10rem' : '7rem',
+        width: size,
+        height: size,
         position: 'relative',
-        touchAction: 'none'
+        touchAction: 'none',
+        pointerEvents: 'auto',
+        zIndex: 100,
+        // 배경을 추가해서 터치 영역이 확실히 잡히도록
+        backgroundColor: 'rgba(50, 50, 50, 0.3)',
+        borderRadius: '50%',
+        border: '2px solid rgba(100, 100, 100, 0.5)'
       }}
     />
   );
