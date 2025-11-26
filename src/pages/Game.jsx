@@ -368,9 +368,9 @@ function Game() {
 
     const player = playerRef.current;
     
-    let zoom = isPC ? 1 : 0.5; // 모바일 기본 줌: 50%
+    let zoom = isPC ? 1 : 0.6; // 모바일 기본 줌: 50%
     if (inputRef.current.map) {
-        zoom = isPC ? 0.6 : 0.3; // 모바일 맵 모드 줌: 30% 
+        zoom = isPC ? 0.6 : 0.4; // 모바일 맵 모드 줌: 30% 
     }
     
     const cameraX = canvas.width / 2 / zoom - player.x - TILE_SIZE/2;
