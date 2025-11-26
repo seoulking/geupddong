@@ -17,4 +17,12 @@ body {
   height: 100%;
 }
 
+/* nipple.js 조이스틱 UI가 캔버스 위에 보이도록 */
+.nipple {
+  z-index: 999 !important;
+}
+.back, .front {
+  z-index: 999 !important;
+}
+
 
