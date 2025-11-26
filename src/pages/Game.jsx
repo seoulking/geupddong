@@ -250,8 +250,6 @@ function Game() {
       }
     }
 
-    visionRadiusRef.current += (targetVision - visionRadiusRef.current) * 0.1;
-
     if (input.map) {
         setShowMap(true);
         speed = 0; 
@@ -273,6 +271,9 @@ function Game() {
         if (mapRevealTimerRef.current > 0) mapRevealTimerRef.current--;
         else setShowMap(false);
     }
+
+    // 시야 확대 적용 (맵/홀드 버튼 처리 후에 적용)
+    visionRadiusRef.current += (targetVision - visionRadiusRef.current) * 0.1;
 
     if (aiMessageTimerRef.current > 0) {
         aiMessageTimerRef.current--;
@@ -709,11 +710,13 @@ function Game() {
                  gap: isPC ? '2rem' : '1rem'
                }}>
              
-             {/* Dynamic Joystick Zone: 오른쪽 버튼 영역을 제외한 전체 화면 */}
-             <DirectionPad inputRef={inputRef} isPC={isPC} buttonAreaRef={null} />
+             {/* 좌측: 조이스틱 */}
+             <div className="flex-shrink-0" style={{ marginBottom: isPC ? '0.5rem' : '0' }}>
+               <DirectionPad inputRef={inputRef} isPC={isPC} />
+             </div>
              
              {/* 우측: RUN, HOLD(가장 크게), MAP 버튼 그룹 (오른쪽 끝 정렬) */}
-             <div className="flex-1 flex justify-end gap-3 items-end z-50" style={{ gap: isPC ? '1rem' : '0.75rem' }}>
+             <div className="flex justify-end gap-3 items-end" style={{ gap: isPC ? '1rem' : '0.75rem' }}>
                  <div className="flex flex-col items-center" style={{ marginBottom: isPC ? '0.5rem' : '0.25rem' }}>
                   <button 
                     data-control-button
