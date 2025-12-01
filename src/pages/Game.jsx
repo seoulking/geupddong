@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { collection, addDoc, serverTimestamp, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
-import { Shield, Zap, MapPin, Activity, RotateCcw, User, Navigation, MousePointer2, Sparkles, Eye, Clock, Crosshair, Maximize } from 'lucide-react';
+import { Shield, Zap, MapPin, Activity, RotateCcw, User, Navigation, MousePointer2, Sparkles, Eye, Clock, Crosshair, Maximize, Target, AlertTriangle } from 'lucide-react';
 import packageInfo from '../../package.json';
 
 import { auth, db } from '../lib/firebase';
 import { callGemini } from '../lib/gemini';
 import { 
   TILE_SIZE, PLAYER_SPEED, SPRINT_MULTIPLIER, MAX_URGENCY, 
-  BASE_URGENCY_RATE_PER_SECOND, MAX_STAMINA, BASE_VISION_RADIUS, MAX_VISION_RADIUS 
+  BASE_URGENCY_RATE_PER_SECOND, MAX_STAMINA, BASE_VISION_RADIUS, MAX_VISION_RADIUS,
+  TIME_LIMIT_MS
 } from '../game/constants';
 import { 
   RAW_MAP_TEMPLATE, MAP_WIDTH_TILES, MAP_HEIGHT_TILES, CENTER_X, CENTER_Y, 
@@ -29,10 +30,13 @@ function Game() {
   const [currentMapData, setCurrentMapData] = useState(RAW_MAP_TEMPLATE);
   const [goalPosition, setGoalPosition] = useState({x:0, y:0});
   const [goalPositions, setGoalPositions] = useState([]); 
+  const [bathroomPositions, setBathroomPositions] = useState([]);
   const [orientation, setOrientation] = useState('landscape');
   const [isPC, setIsPC] = useState(true);
   const [showMap, setShowMap] = useState(false);
   const [aiMessage, setAiMessage] = useState(null);
+  const [bathroomVisited, setBathroomVisited] = useState(false);
+  const [remainingTime, setRemainingTime] = useState(TIME_LIMIT_MS);
 
   const urgencyPercent = Math.max(0, Math.min(100, stats.urgency));
   const urgencyDisplay = Math.round(urgencyPercent);
@@ -201,7 +205,8 @@ function Game() {
 
     let speed = PLAYER_SPEED;
     let urgencyMultiplier = 1.0; 
-    let targetVision = BASE_VISION_RADIUS; 
+    // 화장실 도착 후에는 터널 시야 효과 해제 (넓은 시야)
+    let targetVision = bathroomVisited ? MAX_VISION_RADIUS : BASE_VISION_RADIUS; 
     const isInputMoving = dx !== 0 || dy !== 0;
     const isSprinting = input.sprint && stats.stamina > 0;
     const isHolding = input.hold && stats.stamina > 5;
@@ -252,8 +257,7 @@ function Game() {
 
     if (input.map) {
         setShowMap(true);
-        speed = 0; 
-        // 맵 버튼을 누르면 HOLD 효과처럼 시야 확대
+        // MAP 누른 상태에서도 이동 가능 (speed 유지)
         targetVision = MAX_VISION_RADIUS;
         
         if (!controlTimersRef.current.mapStart) {
@@ -273,7 +277,12 @@ function Game() {
     }
 
     // 시야 확대 적용 (맵/홀드 버튼 처리 후에 적용)
-    visionRadiusRef.current += (targetVision - visionRadiusRef.current) * 0.1;
+    // 화장실 도착 후에는 항상 넓은 시야 유지
+    if (bathroomVisited) {
+      visionRadiusRef.current = MAX_VISION_RADIUS;
+    } else {
+      visionRadiusRef.current += (targetVision - visionRadiusRef.current) * 0.1;
+    }
 
     if (aiMessageTimerRef.current > 0) {
         aiMessageTimerRef.current--;
@@ -333,8 +342,9 @@ function Game() {
     }
 
     const deltaTimeSeconds = deltaTime / 1000;
-    const urgencyIncrease = BASE_URGENCY_RATE_PER_SECOND * urgencyMultiplier * deltaTimeSeconds;
-    const newUrgency = Math.max(0, Math.min(MAX_URGENCY, stats.urgency + urgencyIncrease));
+    // 화장실 도착 후에는 응급도가 증가하지 않음
+    const urgencyIncrease = bathroomVisited ? 0 : BASE_URGENCY_RATE_PER_SECOND * urgencyMultiplier * deltaTimeSeconds;
+    let newUrgency = Math.max(0, Math.min(MAX_URGENCY, stats.urgency + urgencyIncrease));
     
     gameStatsRef.current.maxUrgency = Math.max(gameStatsRef.current.maxUrgency, newUrgency);
     gameStatsRef.current.minStamina = Math.min(gameStatsRef.current.minStamina, stats.stamina);
@@ -343,21 +353,51 @@ function Game() {
       gameStatsRef.current.urgencySamples.push(newUrgency);
     }
     
-    if (currentTile === 3) {
+    // 시간 업데이트
+    const newRemainingTime = Math.max(0, remainingTime - deltaTime);
+    setRemainingTime(newRemainingTime);
+    
+    // 시간 초과 체크
+    if (newRemainingTime <= 0) {
       setStats(prev => ({ ...prev, urgency: newUrgency }));
-      endGame(true, newUrgency);
+      endGame(false, newUrgency, 'timeout');
       return;
+    }
+    
+    // 화장실 도착 (타일 3) - 응급도 해소
+    if (currentTile === 3 && !bathroomVisited) {
+      newUrgency = 0; // 응급도 초기화
+      setBathroomVisited(true);
+      // 즉시 터널 시야 효과 해제
+      visionRadiusRef.current = MAX_VISION_RADIUS;
+      setAiMessage('💧 응급도 해소! 이제 목적지로!');
+      aiMessageTimerRef.current = 120; // 2초간 메시지 표시
+    }
+    
+    // 목적지 도착 (타일 6)
+    if (currentTile === 6) {
+      if (bathroomVisited) {
+        // 화장실 들렀으면 성공!
+        setStats(prev => ({ ...prev, urgency: newUrgency }));
+        endGame(true, newUrgency);
+        return;
+      } else {
+        // 화장실 안 들렀으면 실패 (참지 못함)
+        setStats(prev => ({ ...prev, urgency: MAX_URGENCY }));
+        endGame(false, MAX_URGENCY, 'no_bathroom');
+        return;
+      }
     }
 
     if (newUrgency >= MAX_URGENCY) {
       setStats(prev => ({ ...prev, urgency: MAX_URGENCY }));
-      endGame(false, MAX_URGENCY);
+      endGame(false, MAX_URGENCY, 'urgency');
       return;
     }
 
     setStats(prev => ({ ...prev, urgency: newUrgency }));
     gameTimeRef.current += deltaTime;
-  }, [gameState, stats.stamina, controlsUsed, stats.urgency, currentMapData]);
+  }, [gameState, stats.stamina, controlsUsed, stats.urgency, currentMapData, bathroomVisited, remainingTime]);
 
   const drawGame = useCallback(() => {
     const canvas = canvasRef.current;
@@ -368,9 +408,9 @@ function Game() {
 
     const player = playerRef.current;
     
-    let zoom = isPC ? 1 : 0.6; // 모바일 기본 줌: 50%
+    let zoom = isPC ? 1 : 0.6; // 모바일 기본 줌: 60%
     if (inputRef.current.map) {
-        zoom = isPC ? 0.6 : 0.4; // 모바일 맵 모드 줌: 30% 
+        zoom = isPC ? 0.6 : 0.4; // 맵 모드 줌
     }
     
     const cameraX = canvas.width / 2 / zoom - player.x - TILE_SIZE/2;
@@ -388,11 +428,28 @@ function Game() {
           ctx.fillStyle = '#444'; ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
           ctx.fillStyle = '#222'; ctx.fillRect(px, py + TILE_SIZE - 8, TILE_SIZE, 8);
         } else if (tile === 3) {
-          // 맵 모드일 때는 항상 화장실 표시, 아니면 거리 기반
+          // 화장실 (응급도 해소)
           const dist = Math.sqrt(Math.pow(player.x - px, 2) + Math.pow(player.y - py, 2));
-          if (showMap || dist < 120) {
-              ctx.fillStyle = '#4ade80'; ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
-              ctx.fillStyle = '#fff'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('WC', px + 20, py + 25);
+          if (showMap || dist < 150) {
+              ctx.fillStyle = bathroomVisited ? '#065f46' : '#4ade80'; 
+              ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+              ctx.fillStyle = '#fff'; 
+              ctx.font = 'bold 14px sans-serif'; 
+              ctx.textAlign = 'center'; 
+              ctx.fillText(bathroomVisited ? '✓' : 'WC', px + TILE_SIZE/2, py + TILE_SIZE/2 + 5);
+          } else {
+              ctx.fillStyle = '#333'; ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+          }
+        } else if (tile === 6) {
+          // 목적지 (최종 도착지)
+          const dist = Math.sqrt(Math.pow(player.x - px, 2) + Math.pow(player.y - py, 2));
+          if (showMap || dist < 150) {
+              ctx.fillStyle = '#dc2626'; 
+              ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+              ctx.fillStyle = '#fff'; 
+              ctx.font = 'bold 14px sans-serif'; 
+              ctx.textAlign = 'center'; 
+              ctx.fillText('🎯', px + TILE_SIZE/2, py + TILE_SIZE/2 + 5);
           } else {
               ctx.fillStyle = '#333'; ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
           }
@@ -427,18 +484,21 @@ function Game() {
     }
     ctx.restore();
 
-    const centerX = canvas.width / 2;
-    const centerY = canvas.height / 2;
-    const visionR = visionRadiusRef.current;
-    const gradient = ctx.createRadialGradient(centerX, centerY, visionR * 0.6, centerX, centerY, visionR);
-    gradient.addColorStop(0, 'rgba(0, 0, 0, 0)'); 
-    gradient.addColorStop(0.9, 'rgba(0, 0, 0, 0.98)'); 
-    gradient.addColorStop(1, 'rgba(0, 0, 0, 1)'); 
-    ctx.fillStyle = gradient; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.beginPath(); ctx.rect(0, 0, canvas.width, canvas.height); ctx.arc(centerX, centerY, visionR, 0, Math.PI * 2, true); ctx.fillStyle = 'black'; ctx.fill();
+    // 화장실 방문 후에는 터널 시야 효과 완전 해제
+    if (!bathroomVisited) {
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      const visionR = visionRadiusRef.current;
+      const gradient = ctx.createRadialGradient(centerX, centerY, visionR * 0.6, centerX, centerY, visionR);
+      gradient.addColorStop(0, 'rgba(0, 0, 0, 0)'); 
+      gradient.addColorStop(0.9, 'rgba(0, 0, 0, 0.98)'); 
+      gradient.addColorStop(1, 'rgba(0, 0, 0, 1)'); 
+      ctx.fillStyle = gradient; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.beginPath(); ctx.rect(0, 0, canvas.width, canvas.height); ctx.arc(centerX, centerY, visionR, 0, Math.PI * 2, true); ctx.fillStyle = 'black'; ctx.fill();
+    }
 
     requestRef.current = requestAnimationFrame(drawGame);
-  }, [gameState, stats.urgency, showMap, aiMessage, currentMapData, goalPosition, goalPositions, isPC]);
+  }, [gameState, stats.urgency, showMap, aiMessage, currentMapData, goalPosition, goalPositions, isPC, bathroomVisited]);
 
   useEffect(() => {
     if (gameState === 'playing') {
@@ -450,13 +510,16 @@ function Game() {
 
   const startGame = () => {
     toggleFullScreen();
-    const { map, goalPos, goalPositions } = generateLevel();
+    const { map, goalPos, goalPositions, bathroomPositions: bathrooms } = generateLevel();
     setCurrentMapData(map);
     setGoalPosition(goalPos);
     setGoalPositions(goalPositions || [goalPos]);
+    setBathroomPositions(bathrooms || []);
     playerRef.current = { x: CENTER_X, y: CENTER_Y, vx: 0, vy: 0 };
     setStats({ urgency: 0, stamina: MAX_STAMINA });
     setControlsUsed({});
+    setBathroomVisited(false);
+    setRemainingTime(TIME_LIMIT_MS);
     controlsCountRef.current = {
       'Physical_Control(Hold)': 0,
       'Tech_Control(Map)': 0,
@@ -495,11 +558,12 @@ function Game() {
     if(containerRef.current) containerRef.current.focus();
   };
 
-  const endGame = async (success, finalUrgency = null) => {
+  const endGame = async (success, finalUrgency = null, failReason = null) => {
     setGameState(success ? 'success' : 'fail');
     
     const urgencyToSave = finalUrgency !== null ? finalUrgency : stats.urgency;
     const duration = gameTimeRef.current;
+    const endFailReason = failReason; // 'timeout', 'urgency', 'no_bathroom'
     
     if (success) {
       setCurrentGameDuration(Math.round(duration));
@@ -693,13 +757,33 @@ function Game() {
       {gameState === 'playing' && (
         <>
           <div className="absolute top-0 left-0 right-0 p-4 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent z-20 pointer-events-none">
-             <div className="w-1/2 space-y-1">
+             <div className="flex-1 space-y-1 mr-4">
                 <div className="flex items-center gap-2 text-red-500 font-bold"><Activity size={20}/><span>URGENCY ({urgencyDisplay}%)</span></div>
                 <div className="w-full h-4 bg-gray-800 rounded-full overflow-hidden">
                   <div className="h-full transition-none" style={{width: `${urgencyDisplay}%`, backgroundColor: urgencyColor}}/>
                 </div>
              </div>
-             <div className="w-1/3 flex flex-col items-end">
+             
+             {/* 중앙: 타이머 & 목표 상태 */}
+             <div className="flex flex-col items-center gap-1">
+                <div className={`flex items-center gap-2 font-mono text-2xl font-bold ${remainingTime <= 10000 ? 'text-red-500 animate-pulse' : 'text-white'}`}>
+                  <Clock size={24}/>
+                  <span>{(remainingTime / 1000).toFixed(1)}s</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <div className={`flex items-center gap-1 px-2 py-0.5 rounded ${bathroomVisited ? 'bg-green-600' : 'bg-gray-700'}`}>
+                    <span>{bathroomVisited ? '✓' : '○'}</span>
+                    <span>화장실</span>
+                  </div>
+                  <span className="text-gray-500">→</span>
+                  <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-gray-700">
+                    <Target size={14}/>
+                    <span>목적지</span>
+                  </div>
+                </div>
+             </div>
+             
+             <div className="flex-1 flex flex-col items-end ml-4">
                 <div className="flex items-center gap-1 text-yellow-400"><Zap size={16}/><span>STAMINA</span></div>
                 <div className="w-32 h-2 bg-gray-800 rounded-full"><div className="h-full bg-yellow-400" style={{width: `${stats.stamina}%`}}/></div>
              </div>
@@ -756,14 +840,38 @@ function Game() {
             <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-orange-600 mb-4 italic mt-8">URGENCY PROTOCOL</h1>
             
             {gameState === 'intro' ? (
-                <div className="bg-gray-900 border border-gray-800 p-6 rounded-xl max-w-md w-full space-y-4">
+                <div className="bg-gray-900 border border-gray-800 p-6 rounded-xl max-w-lg w-full space-y-4">
                     <div className="text-center text-[10px] uppercase tracking-[0.3em] text-gray-500">
                       BUILD v{APP_VERSION}
                     </div>
+                    
+                    {/* 미션 목표 */}
+                    <div className="bg-red-900/30 border border-red-700 p-3 rounded-lg space-y-2">
+                      <h3 className="text-red-400 font-bold text-sm flex items-center gap-2">
+                        <AlertTriangle size={16}/> 미션 목표
+                      </h3>
+                      <div className="text-sm text-gray-200 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Clock size={14} className="text-yellow-400"/>
+                          <span><span className="text-yellow-400 font-bold">30초</span> 안에 목적지에 도착하기</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-green-400">🚽</span>
+                          <span>도착 전 <span className="text-green-400 font-bold">화장실</span>에 들러 응급도 해소</span>
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-400 mt-2 flex items-center gap-2">
+                        <span className="bg-green-600 px-2 py-0.5 rounded text-white">WC</span>
+                        <span>→</span>
+                        <span className="bg-red-600 px-2 py-0.5 rounded text-white">🎯</span>
+                        <span className="text-gray-500">순서로 도착!</span>
+                      </div>
+                    </div>
+                    
                     <div className="space-y-2 text-xs bg-black/40 p-3 rounded text-gray-300">
                         <div className="flex justify-between"><span className="text-blue-400 font-bold">RUN (J)</span> <span>달리기 - 속도 증가, 위급도 증가</span></div>
                         <div className="flex justify-between"><span className="text-green-400 font-bold">HOLD (K)</span> <span>필수. 위급도 억제 & 시야 확보</span></div>
-                        <div className="flex justify-between"><span className="text-purple-400 font-bold">MAP (L)</span> <span>어둠 속 화장실 탐지.</span></div>
+                        <div className="flex justify-between"><span className="text-purple-400 font-bold">MAP (L)</span> <span>어둠 속 화장실/목적지 탐지</span></div>
                     </div>
                     <button onClick={startGame} className="w-full py-4 bg-red-700 hover:bg-red-600 font-bold text-lg rounded flex items-center justify-center gap-2">
                         <Maximize size={18} />
@@ -773,10 +881,13 @@ function Game() {
                 </div>
             ) : (
                 <div className="text-center max-w-4xl w-full px-4">
-                    <div className="text-6xl mb-4">{gameState === 'success' ? '🚽' : '☠️'}</div>
+                    <div className="text-6xl mb-4">{gameState === 'success' ? '🎯' : '☠️'}</div>
                     <h2 className={`text-3xl font-bold mb-2 ${gameState==='success'?'text-green-500':'text-red-500'}`}>
-                        {gameState==='success' ? 'CONTROL SUCCESS' : 'CONTAINMENT BREACH'}
+                        {gameState==='success' ? 'MISSION COMPLETE!' : 'MISSION FAILED'}
                     </h2>
+                    {gameState === 'success' && (
+                      <p className="text-green-400 mb-2">화장실 경유 후 목적지 도착 성공!</p>
+                    )}
                     
                     <div className={`${isPC ? 'grid grid-cols-2 gap-4' : 'flex flex-col gap-3'} w-full max-w-4xl`}>
                         <div className="bg-gray-800 p-3 rounded">
